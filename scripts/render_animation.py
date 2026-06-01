@@ -23,10 +23,12 @@ from kinematic_word_cloud.config import (
     resolve_canvas_size,
 )
 from kinematic_word_cloud.data import KeyframeDataError, load_keyframes
+from kinematic_word_cloud.effects import BLOOM_INTENSITY_MODES, BLOOM_SOURCES
 from kinematic_word_cloud.export import export_gif, export_mp4, export_svg
 from kinematic_word_cloud.labels import LABEL_MODES, LABEL_POSITIONS
 from kinematic_word_cloud.layout import COLOR_BY_MODES, COLOR_PALETTES
 from kinematic_word_cloud.render_config import (
+    build_bloom_config,
     build_label_config,
     display_path,
     load_render_config,
@@ -67,6 +69,89 @@ def main() -> None:
         "--background-color",
         default=argparse.SUPPRESS,
         help="Canvas background color for PNG, GIF, MP4, and SVG outputs.",
+    )
+    bloom_group = parser.add_mutually_exclusive_group()
+    bloom_group.add_argument(
+        "--bloom",
+        dest="bloom",
+        action="store_true",
+        default=argparse.SUPPRESS,
+        help="Enable per-word raster bloom for PNG frames, GIF, and MP4.",
+    )
+    bloom_group.add_argument(
+        "--no-bloom",
+        dest="bloom",
+        action="store_false",
+        default=argparse.SUPPRESS,
+        help="Disable raster bloom from a config file.",
+    )
+    parser.add_argument(
+        "--bloom-radius-scale",
+        type=float,
+        default=argparse.SUPPRESS,
+        help="Bloom blur radius as a fraction of current word font size.",
+    )
+    parser.add_argument(
+        "--bloom-min-radius",
+        type=float,
+        default=argparse.SUPPRESS,
+        help="Smallest bloom blur radius in pixels.",
+    )
+    parser.add_argument(
+        "--bloom-max-radius",
+        type=float,
+        default=argparse.SUPPRESS,
+        help="Largest bloom blur radius in pixels.",
+    )
+    parser.add_argument(
+        "--bloom-strength",
+        type=float,
+        default=argparse.SUPPRESS,
+        help="Bloom opacity multiplier.",
+    )
+    parser.add_argument(
+        "--bloom-color",
+        default=argparse.SUPPRESS,
+        help=(
+            "Optional glow color for bloom, such as word, white, or #FFFFFF. "
+            "Defaults to each word's own color."
+        ),
+    )
+    parser.add_argument(
+        "--bloom-source",
+        choices=BLOOM_SOURCES,
+        default=argparse.SUPPRESS,
+        help="Bloom source mask. Edge keeps glow tied to letter outlines.",
+    )
+    parser.add_argument(
+        "--bloom-edge-width",
+        type=int,
+        default=argparse.SUPPRESS,
+        help="Edge-mask width in pixels when --bloom-source edge.",
+    )
+    parser.add_argument(
+        "--bloom-intensity-power",
+        type=float,
+        default=argparse.SUPPRESS,
+        help=(
+            "How strongly bloom intensity follows current word size. "
+            "Use 0 for constant strength."
+        ),
+    )
+    parser.add_argument(
+        "--bloom-intensity-mode",
+        choices=BLOOM_INTENSITY_MODES,
+        default=argparse.SUPPRESS,
+        help=(
+            "How bloom strength scales: absolute current size, relative to "
+            "each word's peak, or constant."
+        ),
+    )
+    parser.add_argument(
+        "--bloom-layers",
+        type=int,
+        default=argparse.SUPPRESS,
+        help="Number of increasingly soft bloom layers per word.",
     )
     parser.add_argument(
         "--output-dir",
@@ -245,6 +330,7 @@ def main() -> None:
             config,
             project_root=PROJECT_ROOT,
         )
+        bloom_config = build_bloom_config(args, config)
         export_formats = resolve_export_formats(args, config)
     except KeyframeDataError as exc:
         parser.error(str(exc))
@@ -278,12 +364,29 @@ def main() -> None:
         label_config=label_config,
         interpolation=interpolation,
         color_options=color_options,
+        bloom_config=bloom_config,
     )
     relative_output_dir = display_path(output_dir, project_root=PROJECT_ROOT)
     print(f"Wrote {len(frame_paths)} frames to {relative_output_dir}")
     print(f"Canvas: {canvas_size.width}x{canvas_size.height} ({aspect})")
     print(f"Background: {background_color}")
     print(f"Interpolation: {interpolation}")
+    if bloom_config is not None:
+        print(
+            "Bloom: "
+            f"radius_scale={bloom_config.radius_scale:g}, "
+            f"radius={bloom_config.min_radius:g}-{bloom_config.max_radius:g}px, "
+            f"strength={bloom_config.strength:g}, "
+            f"color={bloom_config.color or 'word'}, "
+            f"source={bloom_config.source}, "
+            f"edge_width={bloom_config.edge_width}, "
+            f"intensity_mode={bloom_config.intensity_mode}, "
+            f"intensity_power={bloom_config.intensity_power:g}, "
+            f"layers={bloom_config.layers} "
+            "(raster frames, GIF, and MP4)"
+        )
+        if "svg" in export_formats:
+            print("Bloom is not applied to SVG export yet.")
     target_fps = (
         f", target {timing.target_fps:.3f} fps"
         if abs(timing.fps - timing.target_fps) > 0.001
