@@ -19,7 +19,7 @@ from .render import (
     _layout_centers,
     _measure_peak_sizes,
 )
-from .timeline import iter_timeline_frames
+from .timeline import DEFAULT_INTERPOLATION, iter_timeline_frames
 
 
 class ExportError(RuntimeError):
@@ -123,6 +123,7 @@ def export_svg(
     use_physics: bool = False,
     physics_config: PhysicsConfig | None = None,
     label_config: LabelConfig | None = None,
+    interpolation: str = DEFAULT_INTERPOLATION,
     repeat_count: str = "indefinite",
 ) -> Path:
     """Export a sampled animated SVG from the keyframe table."""
@@ -145,6 +146,7 @@ def export_svg(
         min_font_size=min_font_size,
         use_physics=use_physics,
         physics_config=physics_config,
+        interpolation=interpolation,
     )
     duration = (
         float(duration_seconds)
@@ -158,6 +160,7 @@ def export_svg(
         table,
         frames_per_transition=frames_per_transition,
         config=label_config,
+        interpolation=interpolation,
     )
 
     output = Path(output_path)
@@ -217,6 +220,7 @@ def _sample_svg_frames(
     min_font_size: int,
     use_physics: bool,
     physics_config: PhysicsConfig | None,
+    interpolation: str,
 ) -> list[dict[str, dict[str, float]]]:
     font_path = getattr(layout.wordcloud, "font_path")
     peak_sizes = _measure_peak_sizes(layout, font_path=font_path)
@@ -243,6 +247,7 @@ def _sample_svg_frames(
     for frame in iter_timeline_frames(
         table,
         frames_per_transition=frames_per_transition,
+        interpolation=interpolation,
     ):
         centers = (
             simulator.step(frame.values, peak_values)

@@ -7,6 +7,7 @@ from typing import Any, Mapping
 
 from .data import KeyframeDataError
 from .labels import LABEL_MODES, LABEL_POSITIONS, LabelConfig
+from .timeline import DEFAULT_INTERPOLATION, INTERPOLATION_MODES
 
 
 CONFIG_SUFFIX = ".toml"
@@ -159,6 +160,22 @@ def build_label_config(
         opacity=label_opacity,
         margin=label_margin,
     )
+
+
+def resolve_interpolation(
+    cli_values: object,
+    config: Mapping[str, Any],
+) -> str:
+    """Resolve the timeline interpolation mode."""
+
+    interpolation = str(
+        setting(cli_values, config, "interpolation", DEFAULT_INTERPOLATION)
+    )
+    if interpolation not in INTERPOLATION_MODES:
+        raise KeyframeDataError(
+            "interpolation must be one of: " + ", ".join(INTERPOLATION_MODES)
+        )
+    return interpolation
 
 
 def resolve_export_formats(

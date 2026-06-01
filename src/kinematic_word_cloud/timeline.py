@@ -4,9 +4,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from math import floor
-from typing import Iterator
+from typing import Iterator, Literal
 
 from .data import KeyframeDataError, KeyframeTable
+
+
+InterpolationMode = Literal["linear", "smoothstep"]
+DEFAULT_INTERPOLATION: InterpolationMode = "linear"
+INTERPOLATION_MODES: tuple[str, ...] = ("linear", "smoothstep")
 
 
 @dataclass(frozen=True)
@@ -18,39 +23,62 @@ class TimelineFrame:
     start_keyframe: str
     end_keyframe: str
     phase: float
+    interpolated_phase: float
     values: dict[str, float]
 
 
-def interpolate_values(table: KeyframeTable, position: float) -> dict[str, float]:
+def interpolate_values(
+    table: KeyframeTable,
+    position: float,
+    *,
+    interpolation: str = DEFAULT_INTERPOLATION,
+) -> dict[str, float]:
     """Interpolate word values at a fractional keyframe position.
 
     `position=0.0` is the first keyframe, `position=1.0` is the second keyframe,
     and `position=0.5` is halfway between them.
     """
 
-    return _build_frame(table, index=0, position=position).values
+    return _build_frame(
+        table,
+        index=0,
+        position=position,
+        interpolation=interpolation,
+    ).values
 
 
 def iter_timeline_frames(
     table: KeyframeTable,
     *,
     frames_per_transition: int,
+    interpolation: str = DEFAULT_INTERPOLATION,
 ) -> Iterator[TimelineFrame]:
     """Yield interpolated frames across all adjacent keyframes."""
 
     if frames_per_transition < 1:
         raise KeyframeDataError("frames_per_transition must be at least 1.")
+    _validate_interpolation(interpolation)
 
     frame_index = 0
     for segment_index in range(table.frame_count - 1):
         for step in range(frames_per_transition):
             phase = step / float(frames_per_transition)
             position = segment_index + phase
-            yield _build_frame(table, index=frame_index, position=position)
+            yield _build_frame(
+                table,
+                index=frame_index,
+                position=position,
+                interpolation=interpolation,
+            )
             frame_index += 1
 
     final_position = float(table.frame_count - 1)
-    yield _build_frame(table, index=frame_index, position=final_position)
+    yield _build_frame(
+        table,
+        index=frame_index,
+        position=final_position,
+        interpolation=interpolation,
+    )
 
 
 def timeline_frame_count(
@@ -73,6 +101,7 @@ def _build_frame(
     *,
     index: int,
     position: float,
+    interpolation: str,
 ) -> TimelineFrame:
     if table.frame_count < 2:
         raise KeyframeDataError("At least two keyframes are required.")
@@ -86,10 +115,11 @@ def _build_frame(
     start_index = min(floor(position), max_position)
     end_index = min(start_index + 1, max_position)
     phase = 0.0 if start_index == end_index else position - start_index
+    interpolated_phase = _interpolate_phase(phase, interpolation)
 
     start_values = table.values.iloc[:, start_index]
     end_values = table.values.iloc[:, end_index]
-    interpolated = start_values + (end_values - start_values) * phase
+    interpolated = start_values + (end_values - start_values) * interpolated_phase
 
     return TimelineFrame(
         index=index,
@@ -97,8 +127,23 @@ def _build_frame(
         start_keyframe=table.frames[start_index],
         end_keyframe=table.frames[end_index],
         phase=phase,
+        interpolated_phase=interpolated_phase,
         values={
             str(word): float(value)
             for word, value in interpolated.items()
         },
     )
+
+
+def _interpolate_phase(phase: float, interpolation: str) -> float:
+    _validate_interpolation(interpolation)
+    if interpolation == "linear":
+        return phase
+    return phase * phase * (3.0 - 2.0 * phase)
+
+
+def _validate_interpolation(interpolation: str) -> None:
+    if interpolation not in INTERPOLATION_MODES:
+        raise KeyframeDataError(
+            f"interpolation must be one of: {', '.join(INTERPOLATION_MODES)}"
+        )
