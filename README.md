@@ -107,6 +107,16 @@ python3 scripts/create_fixed_frames.py
 
 The script writes a PNG sequence to `output/fixed_frames/`.
 
+The default canvas is 16:9 at `1280x720`. Use `--aspect` to switch presets:
+
+```bash
+python3 scripts/create_fixed_frames.py --aspect 1:1
+python3 scripts/create_fixed_frames.py --aspect 9:16
+```
+
+SVG export uses the same canvas as its `viewBox`, so it scales cleanly while
+keeping the selected layout aspect ratio.
+
 Render with a different input CSV:
 
 ```bash

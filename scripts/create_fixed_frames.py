@@ -15,7 +15,13 @@ os.environ.setdefault("XDG_CACHE_HOME", str(CACHE_ROOT))
 
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
-from kinematic_word_cloud.config import DEFAULT_FPS, resolve_animation_timing
+from kinematic_word_cloud.config import (
+    ASPECT_CHOICES,
+    DEFAULT_ASPECT,
+    DEFAULT_FPS,
+    resolve_animation_timing,
+    resolve_canvas_size,
+)
 from kinematic_word_cloud.data import KeyframeDataError, load_keyframes
 from kinematic_word_cloud.export import export_gif, export_mp4, export_svg
 from kinematic_word_cloud.labels import LABEL_MODES, LABEL_POSITIONS, LabelConfig
@@ -29,6 +35,12 @@ def main() -> None:
         type=Path,
         default=PROJECT_ROOT / "examples" / "simple_keyframes.csv",
         help="Path to a wide keyframe CSV.",
+    )
+    parser.add_argument(
+        "--aspect",
+        choices=ASPECT_CHOICES,
+        default=DEFAULT_ASPECT,
+        help="Canvas aspect-ratio preset.",
     )
     parser.add_argument(
         "--physics",
@@ -119,6 +131,7 @@ def main() -> None:
     if not input_path.is_absolute():
         input_path = PROJECT_ROOT / input_path
     table = load_keyframes(input_path)
+    canvas_size = resolve_canvas_size(args.aspect)
     try:
         timing = resolve_animation_timing(
             table,
@@ -137,14 +150,15 @@ def main() -> None:
         table,
         output_dir,
         frames_per_transition=timing.frames_per_transition,
-        width=1200,
-        height=800,
+        width=canvas_size.width,
+        height=canvas_size.height,
         random_state=7,
         use_physics=args.physics,
         label_config=label_config,
     )
     relative_output_dir = output_dir.relative_to(PROJECT_ROOT)
     print(f"Wrote {len(frame_paths)} frames to {relative_output_dir}")
+    print(f"Canvas: {canvas_size.width}x{canvas_size.height} ({args.aspect})")
     target_fps = (
         f", target {timing.target_fps:.3f} fps"
         if abs(timing.fps - timing.target_fps) > 0.001
@@ -184,8 +198,8 @@ def main() -> None:
             frames_per_transition=timing.frames_per_transition,
             fps=timing.fps,
             duration_seconds=timing.duration_seconds,
-            width=1200,
-            height=800,
+            width=canvas_size.width,
+            height=canvas_size.height,
             random_state=7,
             use_physics=args.physics,
             label_config=label_config,

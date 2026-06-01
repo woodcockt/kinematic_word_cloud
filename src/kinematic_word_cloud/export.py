@@ -8,6 +8,7 @@ import subprocess
 
 from PIL import Image
 
+from .config import DEFAULT_CANVAS_SIZE
 from .data import KeyframeTable
 from .labels import LabelConfig, sample_labels, svg_label_position
 from .layout import build_peak_layout
@@ -113,8 +114,8 @@ def export_svg(
     frames_per_transition: int = 12,
     fps: float = 12,
     duration_seconds: float | None = None,
-    width: int = 1200,
-    height: int = 800,
+    width: int = DEFAULT_CANVAS_SIZE.width,
+    height: int = DEFAULT_CANVAS_SIZE.height,
     background_color: str = "white",
     random_state: int = 42,
     colormap: str = "viridis",

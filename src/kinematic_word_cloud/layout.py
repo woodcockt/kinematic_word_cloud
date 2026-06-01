@@ -10,6 +10,7 @@ try:
 except ImportError:  # pragma: no cover - exercised when optional dep is missing.
     WordCloud = None
 
+from .config import DEFAULT_CANVAS_SIZE
 from .data import KeyframeTable
 
 
@@ -50,8 +51,8 @@ class CloudLayout:
 def build_peak_layout(
     table: KeyframeTable,
     *,
-    width: int = 1200,
-    height: int = 800,
+    width: int = DEFAULT_CANVAS_SIZE.width,
+    height: int = DEFAULT_CANVAS_SIZE.height,
     background_color: str = "white",
     random_state: int = 42,
     colormap: str = "viridis",
@@ -79,8 +80,8 @@ def build_layout_from_frequencies(
     *,
     explicit_colors: Mapping[str, str] | None = None,
     word_groups: Mapping[str, str] | None = None,
-    width: int = 1200,
-    height: int = 800,
+    width: int = DEFAULT_CANVAS_SIZE.width,
+    height: int = DEFAULT_CANVAS_SIZE.height,
     background_color: str = "white",
     random_state: int = 42,
     colormap: str = "viridis",

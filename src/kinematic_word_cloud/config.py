@@ -11,6 +11,24 @@ from .timeline import timeline_frame_count
 
 DEFAULT_FPS = 12.0
 DEFAULT_FRAMES_PER_TRANSITION = 12
+DEFAULT_ASPECT = "16:9"
+
+
+@dataclass(frozen=True)
+class CanvasSize:
+    """Resolved canvas geometry for layout and export."""
+
+    width: int
+    height: int
+
+
+CANVAS_SIZES: dict[str, CanvasSize] = {
+    "16:9": CanvasSize(width=1280, height=720),
+    "1:1": CanvasSize(width=1080, height=1080),
+    "9:16": CanvasSize(width=720, height=1280),
+}
+ASPECT_CHOICES: tuple[str, ...] = tuple(CANVAS_SIZES)
+DEFAULT_CANVAS_SIZE = CANVAS_SIZES[DEFAULT_ASPECT]
 
 
 @dataclass(frozen=True)
@@ -23,6 +41,19 @@ class AnimationTiming:
     target_fps: float
     duration_seconds: float
     seconds_per_transition: float
+
+
+def resolve_canvas_size(aspect: str | None = None) -> CanvasSize:
+    """Resolve a named aspect-ratio preset to concrete canvas dimensions."""
+
+    selected = DEFAULT_ASPECT if aspect is None else aspect
+    try:
+        return CANVAS_SIZES[selected]
+    except KeyError as exc:
+        raise KeyframeDataError(
+            f"Unknown aspect {selected!r}. Expected one of: "
+            + ", ".join(ASPECT_CHOICES)
+        ) from exc
 
 
 def resolve_animation_timing(

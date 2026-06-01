@@ -7,6 +7,7 @@ from typing import Mapping
 
 from PIL import Image, ImageDraw, ImageFont
 
+from .config import DEFAULT_CANVAS_SIZE
 from .data import KeyframeTable
 from .labels import LabelConfig, label_for_frame, render_label_overlay
 from .layout import CloudLayout, build_layout_from_frequencies, build_peak_layout
@@ -18,8 +19,8 @@ def render_peak_cloud(
     table: KeyframeTable,
     output_path: str | Path,
     *,
-    width: int = 1200,
-    height: int = 800,
+    width: int = DEFAULT_CANVAS_SIZE.width,
+    height: int = DEFAULT_CANVAS_SIZE.height,
     background_color: str = "white",
     random_state: int = 42,
     colormap: str = "viridis",
@@ -114,8 +115,8 @@ def render_fixed_animation_frames(
     output_dir: str | Path,
     *,
     frames_per_transition: int = 12,
-    width: int = 1200,
-    height: int = 800,
+    width: int = DEFAULT_CANVAS_SIZE.width,
+    height: int = DEFAULT_CANVAS_SIZE.height,
     background_color: str = "white",
     random_state: int = 42,
     colormap: str = "viridis",
