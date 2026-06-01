@@ -1,0 +1,15 @@
+input = "examples/bioit_top_terms_2016_2026.csv"
+aspect = "16:9"
+exports = ["svg"]
+output = "output/bioit_top_terms"
+output_dir = "output/bioit_top_terms_frames"
+total_duration = 12
+fps = 12
+
+[label]
+mode = "keyframe"
+position = "top-right"
+size = 56
+color = "#222222"
+opacity = 0.85
+margin = 32
