@@ -7,7 +7,7 @@ from typing import Literal
 
 from PIL import Image, ImageColor, ImageDraw, ImageFont
 
-from .timeline import TimelineFrame, iter_timeline_frames
+from .timeline import DEFAULT_INTERPOLATION, TimelineFrame, iter_timeline_frames
 
 
 LabelMode = Literal["none", "keyframe"]
@@ -64,6 +64,7 @@ def sample_labels(
     *,
     frames_per_transition: int,
     config: LabelConfig | None,
+    interpolation: str = DEFAULT_INTERPOLATION,
 ) -> list[str | None]:
     """Return the label value for every sampled animation frame."""
 
@@ -72,6 +73,7 @@ def sample_labels(
         for frame in iter_timeline_frames(
             table,
             frames_per_transition=frames_per_transition,
+            interpolation=interpolation,
         )
     ]
 

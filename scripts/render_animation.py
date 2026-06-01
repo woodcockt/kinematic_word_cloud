@@ -32,11 +32,13 @@ from kinematic_word_cloud.render_config import (
     optional_bool,
     resolve_export_formats,
     resolve_export_paths,
+    resolve_interpolation,
     resolve_project_path,
     resolve_timing_values,
     setting,
 )
 from kinematic_word_cloud.render import render_fixed_animation_frames
+from kinematic_word_cloud.timeline import INTERPOLATION_MODES
 
 
 def main() -> None:
@@ -119,6 +121,12 @@ def main() -> None:
         help="Number of rendered frames between adjacent keyframes.",
     )
     parser.add_argument(
+        "--interpolation",
+        choices=INTERPOLATION_MODES,
+        default=argparse.SUPPRESS,
+        help="Value interpolation curve between adjacent keyframes.",
+    )
+    parser.add_argument(
         "--label-mode",
         choices=LABEL_MODES,
         default=argparse.SUPPRESS,
@@ -193,6 +201,7 @@ def main() -> None:
             setting(args, config, "physics", False),
             "physics",
         )
+        interpolation = resolve_interpolation(args, config)
         export_formats = resolve_export_formats(args, config)
     except KeyframeDataError as exc:
         parser.error(str(exc))
@@ -223,10 +232,12 @@ def main() -> None:
         random_state=7,
         use_physics=use_physics,
         label_config=label_config,
+        interpolation=interpolation,
     )
     relative_output_dir = display_path(output_dir, project_root=PROJECT_ROOT)
     print(f"Wrote {len(frame_paths)} frames to {relative_output_dir}")
     print(f"Canvas: {canvas_size.width}x{canvas_size.height} ({aspect})")
+    print(f"Interpolation: {interpolation}")
     target_fps = (
         f", target {timing.target_fps:.3f} fps"
         if abs(timing.fps - timing.target_fps) > 0.001
@@ -270,6 +281,7 @@ def main() -> None:
             random_state=7,
             use_physics=use_physics,
             label_config=label_config,
+            interpolation=interpolation,
         )
         print(f"Wrote {display_path(svg_path, project_root=PROJECT_ROOT)}")
 

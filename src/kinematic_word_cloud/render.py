@@ -12,7 +12,7 @@ from .data import KeyframeTable
 from .labels import LabelConfig, label_for_frame, render_label_overlay
 from .layout import CloudLayout, build_layout_from_frequencies, build_peak_layout
 from .physics import PhysicsConfig, PhysicsSimulator, WordBodySpec
-from .timeline import iter_timeline_frames
+from .timeline import DEFAULT_INTERPOLATION, iter_timeline_frames
 
 
 def render_peak_cloud(
@@ -124,6 +124,7 @@ def render_fixed_animation_frames(
     use_physics: bool = False,
     physics_config: PhysicsConfig | None = None,
     label_config: LabelConfig | None = None,
+    interpolation: str = DEFAULT_INTERPOLATION,
 ) -> list[Path]:
     """Render PNG frames for the whole keyframe timeline."""
 
@@ -167,6 +168,7 @@ def render_fixed_animation_frames(
     for frame in iter_timeline_frames(
         table,
         frames_per_transition=frames_per_transition,
+        interpolation=interpolation,
     ):
         frame_path = output / f"frame_{frame.index:04d}.png"
         centers = (

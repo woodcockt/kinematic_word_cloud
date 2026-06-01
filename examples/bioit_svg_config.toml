@@ -5,6 +5,7 @@ output = "output/bioit_top_terms"
 output_dir = "output/bioit_top_terms_frames"
 total_duration = 12
 fps = 12
+interpolation = "smoothstep"
 
 [label]
 mode = "keyframe"

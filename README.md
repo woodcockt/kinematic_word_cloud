@@ -198,6 +198,16 @@ python3 scripts/render_animation.py --exports mp4 --seconds-per-transition 2 --f
 The script nudges the effective FPS when needed so the animation lands exactly
 on each keyframe and still matches the requested duration.
 
+Choose how values move between keyframes:
+
+```bash
+python3 scripts/render_animation.py --interpolation linear
+python3 scripts/render_animation.py --interpolation smoothstep
+```
+
+`linear` changes values at a constant rate. `smoothstep` eases in and out of
+each transition while still landing exactly on every keyframe.
+
 Export sampled animated SVG:
 
 ```bash
