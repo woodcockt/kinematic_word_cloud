@@ -6,6 +6,13 @@ output_dir = "output/bioit_top_terms_frames"
 total_duration = 12
 fps = 12
 interpolation = "smoothstep"
+palette_file = "examples/palette_bioit.hex"
+color_by = "group"
+
+[group_colors]
+"2-gram" = "#0072B2"
+"3-gram" = "#009E73"
+"4-gram" = "#D55E00"
 
 [label]
 mode = "keyframe"
