@@ -18,11 +18,18 @@ sys.path.insert(0, str(PROJECT_ROOT / "src"))
 from kinematic_word_cloud.config import DEFAULT_FPS, resolve_animation_timing
 from kinematic_word_cloud.data import KeyframeDataError, load_keyframes
 from kinematic_word_cloud.export import export_gif, export_mp4, export_svg
+from kinematic_word_cloud.labels import LABEL_MODES, LABEL_POSITIONS, LabelConfig
 from kinematic_word_cloud.render import render_fixed_animation_frames
 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--input",
+        type=Path,
+        default=PROJECT_ROOT / "examples" / "simple_keyframes.csv",
+        help="Path to a wide keyframe CSV.",
+    )
     parser.add_argument(
         "--physics",
         action="store_true",
@@ -71,9 +78,47 @@ def main() -> None:
         default=None,
         help="Number of rendered frames between adjacent keyframes.",
     )
+    parser.add_argument(
+        "--label-mode",
+        choices=LABEL_MODES,
+        default="none",
+        help="Overlay label mode.",
+    )
+    parser.add_argument(
+        "--label-position",
+        choices=LABEL_POSITIONS,
+        default="top-left",
+        help="Overlay label position.",
+    )
+    parser.add_argument(
+        "--label-size",
+        type=int,
+        default=56,
+        help="Overlay label font size.",
+    )
+    parser.add_argument(
+        "--label-color",
+        default="#222222",
+        help="Overlay label CSS/Pillow color.",
+    )
+    parser.add_argument(
+        "--label-opacity",
+        type=float,
+        default=0.85,
+        help="Overlay label opacity from 0 to 1.",
+    )
+    parser.add_argument(
+        "--label-margin",
+        type=int,
+        default=32,
+        help="Overlay label margin in pixels.",
+    )
     args = parser.parse_args()
 
-    table = load_keyframes(PROJECT_ROOT / "examples" / "simple_keyframes.csv")
+    input_path = args.input
+    if not input_path.is_absolute():
+        input_path = PROJECT_ROOT / input_path
+    table = load_keyframes(input_path)
     try:
         timing = resolve_animation_timing(
             table,
@@ -84,6 +129,7 @@ def main() -> None:
         )
     except KeyframeDataError as exc:
         parser.error(str(exc))
+    label_config = _build_label_config(args, parser)
     output_dir = PROJECT_ROOT / "output" / (
         "physics_frames" if args.physics else "fixed_frames"
     )
@@ -95,6 +141,7 @@ def main() -> None:
         height=800,
         random_state=7,
         use_physics=args.physics,
+        label_config=label_config,
     )
     relative_output_dir = output_dir.relative_to(PROJECT_ROOT)
     print(f"Wrote {len(frame_paths)} frames to {relative_output_dir}")
@@ -141,8 +188,32 @@ def main() -> None:
             height=800,
             random_state=7,
             use_physics=args.physics,
+            label_config=label_config,
         )
         print(f"Wrote {svg_path.relative_to(PROJECT_ROOT)}")
+
+
+def _build_label_config(
+    args: argparse.Namespace,
+    parser: argparse.ArgumentParser,
+) -> LabelConfig | None:
+    if args.label_mode == "none":
+        return None
+    if args.label_size <= 0:
+        parser.error("--label-size must be greater than zero.")
+    if args.label_margin < 0:
+        parser.error("--label-margin must be non-negative.")
+    if not 0 <= args.label_opacity <= 1:
+        parser.error("--label-opacity must be between 0 and 1.")
+
+    return LabelConfig(
+        mode=args.label_mode,
+        position=args.label_position,
+        font_size=args.label_size,
+        color=args.label_color,
+        opacity=args.label_opacity,
+        margin=args.label_margin,
+    )
 
 
 if __name__ == "__main__":

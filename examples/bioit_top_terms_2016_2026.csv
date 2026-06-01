@@ -1,0 +1,40 @@
+word,color,group,2016,2017,2018,2019,2020,2021,2022,2023,2024,2025,2026
+drug discovery,,2-gram,4,13,15,14,6,17,29,38,71,60,40
+machine learning,,2-gram,3,8,18,24,17,27,41,39,45,51,22
+generative ai,,2-gram,0,0,0,0,0,0,0,2,31,46,17
+knowledge graphs,,2-gram,0,0,0,0,0,5,4,4,30,20,30
+clinical trial,,2-gram,14,16,9,15,12,29,28,17,22,19,7
+llm,,1-gram,0,0,0,0,0,0,0,4,25,19,6
+agentic ai,,2-gram,0,0,0,0,0,0,0,0,0,7,24
+precision medicine,,2-gram,11,15,9,15,9,3,15,5,20,16,10
+ontologies,,1-gram,0,0,5,0,0,0,2,5,4,5,16
+natural language,,2-gram,0,0,4,5,13,6,16,6,6,5,5
+deep learning,,2-gram,0,0,4,14,7,11,6,5,3,3,0
+biomarkers,,1-gram,5,2,6,6,3,3,6,0,10,0,4
+patient outcomes,,2-gram,0,3,3,0,2,3,4,2,5,9,0
+ai agents,,2-gram,0,0,0,0,0,0,0,0,0,4,9
+open source,,2-gram,8,4,5,3,4,0,0,0,0,0,0
+interoperability,,1-gram,4,0,0,0,2,2,8,0,5,3,7
+retrieval augmented,,2-gram,0,0,0,0,0,0,0,0,4,5,8
+augmented generation,,2-gram,0,0,0,0,0,0,0,0,4,6,7
+decision making,,2-gram,5,6,4,5,2,3,3,0,0,0,4
+patient care,,2-gram,0,0,0,6,0,0,5,2,3,0,2
+ontology,,1-gram,0,0,0,0,0,0,0,6,3,4,0
+security breaches,,2-gram,5,0,0,0,0,0,0,0,0,0,0
+ribosome profiling,,2-gram,0,0,5,0,0,0,0,0,0,0,0
+gene expression,,2-gram,0,0,3,5,0,0,3,2,0,0,0
+drug candidates,,2-gram,0,0,2,0,0,0,0,5,2,4,0
+publicly available,,2-gram,0,0,3,5,0,0,0,5,0,0,2
+wet lab,,2-gram,0,0,0,0,0,0,0,5,0,2,2
+genome sequencing,,2-gram,4,0,4,0,0,2,0,0,0,0,0
+next-generation sequencing,,2-gram,4,0,3,0,0,0,0,0,0,0,0
+rapidly growing,,2-gram,4,0,0,0,0,0,0,0,0,0,0
+whole genome,,2-gram,4,0,4,2,0,2,0,0,0,0,0
+service providers,,2-gram,2,4,0,0,0,0,0,0,0,0,0
+translational medicine,,2-gram,0,4,0,0,0,0,0,0,0,0,0
+variant calling,,2-gram,0,4,0,2,0,0,0,0,0,0,0
+accessible interoperable,,2-gram,0,0,2,3,3,2,0,2,2,4,0
+rare disease,,2-gram,0,2,2,0,4,0,0,0,2,0,2
+targeted treatments,,2-gram,0,0,0,0,0,4,0,0,0,0,0
+actionable information,,2-gram,0,2,0,0,3,0,0,0,0,0,0
+genetic variants,,2-gram,2,0,0,3,0,3,0,0,0,0,0

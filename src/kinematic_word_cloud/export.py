@@ -9,6 +9,7 @@ import subprocess
 from PIL import Image
 
 from .data import KeyframeTable
+from .labels import LabelConfig, sample_labels, svg_label_position
 from .layout import build_peak_layout
 from .physics import PhysicsConfig
 from .render import (
@@ -120,6 +121,7 @@ def export_svg(
     min_font_size: int = 4,
     use_physics: bool = False,
     physics_config: PhysicsConfig | None = None,
+    label_config: LabelConfig | None = None,
     repeat_count: str = "indefinite",
 ) -> Path:
     """Export a sampled animated SVG from the keyframe table."""
@@ -151,12 +153,16 @@ def export_svg(
     if duration <= 0:
         raise ExportError("duration_seconds must be greater than zero.")
     key_times = _svg_key_times(len(samples))
+    label_samples = sample_labels(
+        table,
+        frames_per_transition=frames_per_transition,
+        config=label_config,
+    )
 
     output = Path(output_path)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(
         _build_svg_document(
-            table,
             layout=layout,
             samples=samples,
             width=width,
@@ -165,6 +171,8 @@ def export_svg(
             duration=duration,
             key_times=key_times,
             repeat_count=repeat_count,
+            label_config=label_config,
+            label_samples=label_samples,
         ),
         encoding="utf-8",
     )
@@ -264,9 +272,8 @@ def _sample_svg_frames(
 
 
 def _build_svg_document(
-    table: KeyframeTable,
-    *,
     layout,
+    *,
     samples: list[dict[str, dict[str, float]]],
     width: int,
     height: int,
@@ -274,6 +281,8 @@ def _build_svg_document(
     duration: float,
     key_times: str,
     repeat_count: str,
+    label_config: LabelConfig | None,
+    label_samples: list[str | None],
 ) -> str:
     lines = [
         '<?xml version="1.0" encoding="UTF-8"?>',
@@ -327,7 +336,19 @@ def _build_svg_document(
             ]
         )
 
-    lines.extend(["  </g>", "</svg>", ""])
+    lines.append("  </g>")
+    lines.extend(
+        _build_svg_label_lines(
+            label_config=label_config,
+            label_samples=label_samples,
+            width=width,
+            height=height,
+            duration=duration,
+            key_times=key_times,
+            repeat_count=repeat_count,
+        )
+    )
+    lines.extend(["</svg>", ""])
     return "\n".join(lines)
 
 
@@ -337,13 +358,74 @@ def _animate_line(
     duration: float,
     key_times: str,
     repeat_count: str,
+    *,
+    calc_mode: str | None = None,
 ) -> str:
     values_text = ";".join(_fmt(value) for value in values)
+    calc_mode_text = f' calcMode="{escape(calc_mode)}"' if calc_mode else ""
     return (
         f'      <animate attributeName="{attribute}" values="{values_text}" '
         f'keyTimes="{key_times}" dur="{_fmt(duration)}s" '
-        f'repeatCount="{escape(repeat_count)}" />'
+        f'repeatCount="{escape(repeat_count)}"{calc_mode_text} />'
     )
+
+
+def _build_svg_label_lines(
+    *,
+    label_config: LabelConfig | None,
+    label_samples: list[str | None],
+    width: int,
+    height: int,
+    duration: float,
+    key_times: str,
+    repeat_count: str,
+) -> list[str]:
+    if label_config is None or label_config.mode == "none":
+        return []
+
+    unique_labels = list(dict.fromkeys(label for label in label_samples if label))
+    if not unique_labels:
+        return []
+
+    x, y, anchor, baseline = svg_label_position(
+        width=width,
+        height=height,
+        config=label_config,
+    )
+    lines = [
+        (
+            f'  <g font-family="monospace" text-anchor="{anchor}" '
+            f'dominant-baseline="{baseline}">'
+        )
+    ]
+    for label in unique_labels:
+        opacity_values = [
+            label_config.opacity if sample == label else 0.0
+            for sample in label_samples
+        ]
+        lines.extend(
+            [
+                (
+                    f'    <text x="{_fmt(x)}" y="{_fmt(y)}" '
+                    f'font-size="{_fmt(label_config.font_size)}" '
+                    f'fill="{escape(label_config.color)}" '
+                    f'opacity="{_fmt(opacity_values[0])}">'
+                ),
+                _animate_line(
+                    "opacity",
+                    opacity_values,
+                    duration,
+                    key_times,
+                    repeat_count,
+                    calc_mode="discrete",
+                ),
+                f"      {escape(label)}",
+                "    </text>",
+            ]
+        )
+
+    lines.append("  </g>")
+    return lines
 
 
 def _animate_transform_line(

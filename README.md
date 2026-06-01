@@ -29,6 +29,11 @@ fixture with five words and three keyframes. It includes one word shrinking from
 large to small, one growing to its maximum in the final frame, and one peaking
 in the middle frame.
 
+See [examples/bioit_top_terms_2016_2026.csv](examples/bioit_top_terms_2016_2026.csv)
+for a larger fixture generated from BioIT abstract phrase frequencies. It uses
+the union of the top 10 phrases by `corpus_freq` for each year from 2016 through
+2026.
+
 The `color` and `group` columns are optional metadata:
 
 - `color`: explicit word color as `#RGB` or `#RRGGBB`.
@@ -101,6 +106,22 @@ python3 scripts/create_fixed_frames.py
 ```
 
 The script writes a PNG sequence to `output/fixed_frames/`.
+
+Render with a different input CSV:
+
+```bash
+python3 scripts/create_fixed_frames.py --input examples/bioit_top_terms_2016_2026.csv
+```
+
+Render keyframe labels as an overlay:
+
+```bash
+python3 scripts/create_fixed_frames.py --label-mode keyframe --label-position top-left
+```
+
+The first label mode uses the table's frame labels, such as `2016`, `2017`,
+or `2026`. Labels are drawn as a separate overlay layer, so they do not affect
+word-cloud placement or physics.
 
 Render the same sequence with the lightweight physics solver enabled:
 

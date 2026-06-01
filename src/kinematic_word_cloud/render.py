@@ -8,6 +8,7 @@ from typing import Mapping
 from PIL import Image, ImageDraw, ImageFont
 
 from .data import KeyframeTable
+from .labels import LabelConfig, label_for_frame, render_label_overlay
 from .layout import CloudLayout, build_layout_from_frequencies, build_peak_layout
 from .physics import PhysicsConfig, PhysicsSimulator, WordBodySpec
 from .timeline import iter_timeline_frames
@@ -49,6 +50,8 @@ def render_fixed_frame(
     background_color: str | None = None,
     min_font_size: int = 4,
     centers: Mapping[str, tuple[float, float]] | None = None,
+    label_text: str | None = None,
+    label_config: LabelConfig | None = None,
 ) -> Image.Image:
     """Render one fixed-position frame with size scaled by current values."""
 
@@ -93,6 +96,13 @@ def render_fixed_frame(
         paste_y = int(round(center_y - current_image.height / 2))
         image.paste(current_image, (paste_x, paste_y), current_image)
 
+    render_label_overlay(
+        image,
+        label_text,
+        config=label_config,
+        font_path=font_path,
+    )
+
     output = Path(output_path)
     output.parent.mkdir(parents=True, exist_ok=True)
     image.save(output)
@@ -112,6 +122,7 @@ def render_fixed_animation_frames(
     min_font_size: int = 4,
     use_physics: bool = False,
     physics_config: PhysicsConfig | None = None,
+    label_config: LabelConfig | None = None,
 ) -> list[Path]:
     """Render PNG frames for the whole keyframe timeline."""
 
@@ -170,6 +181,8 @@ def render_fixed_animation_frames(
             background_color=background_color,
             min_font_size=min_font_size,
             centers=centers,
+            label_text=label_for_frame(frame, label_config),
+            label_config=label_config,
         )
         frame_paths.append(frame_path)
 
