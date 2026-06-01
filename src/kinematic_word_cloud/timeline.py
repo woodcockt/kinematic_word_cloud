@@ -53,6 +53,21 @@ def iter_timeline_frames(
     yield _build_frame(table, index=frame_index, position=final_position)
 
 
+def timeline_frame_count(
+    table: KeyframeTable,
+    *,
+    frames_per_transition: int,
+) -> int:
+    """Return the number of rendered frames for a complete timeline."""
+
+    if frames_per_transition < 1:
+        raise KeyframeDataError("frames_per_transition must be at least 1.")
+    if table.frame_count < 2:
+        raise KeyframeDataError("At least two keyframes are required.")
+
+    return (table.frame_count - 1) * frames_per_transition + 1
+
+
 def _build_frame(
     table: KeyframeTable,
     *,

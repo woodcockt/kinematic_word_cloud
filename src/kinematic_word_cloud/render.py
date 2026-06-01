@@ -125,6 +125,7 @@ def render_fixed_animation_frames(
     )
     output = Path(output_dir)
     output.mkdir(parents=True, exist_ok=True)
+    _clear_animation_frames(output)
 
     frame_paths: list[Path] = []
     anchor_layout = (
@@ -173,6 +174,11 @@ def render_fixed_animation_frames(
         frame_paths.append(frame_path)
 
     return frame_paths
+
+
+def _clear_animation_frames(output_dir: Path) -> None:
+    for frame_path in output_dir.glob("frame_*.png"):
+        frame_path.unlink(missing_ok=True)
 
 
 def _build_anchor_layout(

@@ -122,8 +122,24 @@ python3 scripts/create_fixed_frames.py --physics --gif --mp4
 ```
 
 GIF export uses Pillow. MP4 export uses the local `ffmpeg` binary.
-Use `--fps` for playback rate and `--frames-per-transition` for interpolation
-density.
+The default playback rate is 12 fps. Use `--fps` for playback rate and
+`--frames-per-transition` for interpolation density:
+
+```bash
+python3 scripts/create_fixed_frames.py --gif --fps 12 --frames-per-transition 24
+```
+
+You can also set total duration or per-transition duration. In duration mode,
+`--fps` becomes the target frame rate, still defaulting to 12 fps, and the
+script calculates the rendered frames per transition:
+
+```bash
+python3 scripts/create_fixed_frames.py --gif --total-duration 6 --fps 24
+python3 scripts/create_fixed_frames.py --mp4 --seconds-per-transition 2 --fps 24
+```
+
+The script nudges the effective FPS when needed so the animation lands exactly
+on each keyframe and still matches the requested duration.
 
 Export sampled animated SVG:
 

@@ -28,7 +28,7 @@ def export_gif(
     frame_paths: list[Path],
     output_path: str | Path,
     *,
-    fps: int = 12,
+    fps: float = 12,
     loop: int = 0,
 ) -> Path:
     """Export a PNG frame sequence to an animated GIF."""
@@ -63,7 +63,7 @@ def export_mp4(
     frame_paths: list[Path],
     output_path: str | Path,
     *,
-    fps: int = 24,
+    fps: float = 24,
     ffmpeg_binary: str = "ffmpeg",
 ) -> Path:
     """Export a PNG frame sequence to MP4 using ffmpeg."""
@@ -80,7 +80,7 @@ def export_mp4(
         ffmpeg_binary,
         "-y",
         "-framerate",
-        str(fps),
+        _fmt_rate(fps),
         "-i",
         input_pattern,
         "-c:v",
@@ -110,7 +110,8 @@ def export_svg(
     output_path: str | Path,
     *,
     frames_per_transition: int = 12,
-    fps: int = 12,
+    fps: float = 12,
+    duration_seconds: float | None = None,
     width: int = 1200,
     height: int = 800,
     background_color: str = "white",
@@ -142,7 +143,13 @@ def export_svg(
         use_physics=use_physics,
         physics_config=physics_config,
     )
-    duration = len(samples) / float(fps)
+    duration = (
+        float(duration_seconds)
+        if duration_seconds is not None
+        else len(samples) / float(fps)
+    )
+    if duration <= 0:
+        raise ExportError("duration_seconds must be greater than zero.")
     key_times = _svg_key_times(len(samples))
 
     output = Path(output_path)
@@ -178,9 +185,16 @@ def _validate_frame_paths(frame_paths: list[Path]) -> list[Path]:
 
 def _frame_input_pattern(frame_paths: list[Path]) -> str:
     first = frame_paths[0]
-    if first.name != "frame_0000.png":
+    expected_names = [f"frame_{index:04d}.png" for index in range(len(frame_paths))]
+    if [path.name for path in frame_paths] != expected_names:
         raise ExportError(
             "MP4 export expects frames named frame_0000.png, frame_0001.png, ..."
+        )
+
+    extra_frame = first.parent / f"frame_{len(frame_paths):04d}.png"
+    if extra_frame.exists():
+        raise ExportError(
+            f"Unexpected extra frame exists after the export sequence: {extra_frame}"
         )
 
     return str(first.parent / "frame_%04d.png")
@@ -375,3 +389,7 @@ def _svg_rotation(orientation) -> str | None:
 
 def _fmt(value: float) -> str:
     return f"{value:.3f}".rstrip("0").rstrip(".")
+
+
+def _fmt_rate(value: float) -> str:
+    return f"{value:.6f}".rstrip("0").rstrip(".")
