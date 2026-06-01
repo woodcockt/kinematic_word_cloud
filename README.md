@@ -99,19 +99,31 @@ python3 scripts/create_starting_cloud.py
 
 The script writes `output/starting_cloud.png`.
 
-Render fixed-position interpolated PNG frames:
+Render interpolated PNG frames:
 
 ```bash
-python3 scripts/create_fixed_frames.py
+python3 scripts/render_animation.py
 ```
 
-The script writes a PNG sequence to `output/fixed_frames/`.
+By default, the script uses fixed word positions and writes a PNG sequence to
+`output/fixed_frames/`.
+
+Choose output destinations:
+
+```bash
+python3 scripts/render_animation.py --exports svg --output output/demo.svg
+python3 scripts/render_animation.py --exports gif mp4 --output output/demo
+python3 scripts/render_animation.py --output-dir output/demo_frames
+```
+
+When multiple export formats are selected, `--output` is treated as a filename
+stem and the script appends `.gif`, `.mp4`, or `.svg`.
 
 The default canvas is 16:9 at `1280x720`. Use `--aspect` to switch presets:
 
 ```bash
-python3 scripts/create_fixed_frames.py --aspect 1:1
-python3 scripts/create_fixed_frames.py --aspect 9:16
+python3 scripts/render_animation.py --aspect 1:1
+python3 scripts/render_animation.py --aspect 9:16
 ```
 
 SVG export uses the same canvas as its `viewBox`, so it scales cleanly while
@@ -120,13 +132,27 @@ keeping the selected layout aspect ratio.
 Render with a different input CSV:
 
 ```bash
-python3 scripts/create_fixed_frames.py --input examples/bioit_top_terms_2016_2026.csv
+python3 scripts/render_animation.py --input examples/bioit_top_terms_2016_2026.csv
 ```
+
+Use a TOML config file instead of repeating CLI parameters:
+
+```bash
+python3 scripts/render_animation.py --config examples/bioit_svg_config.toml
+```
+
+CLI flags override config-file settings. For example, `--exports svg mp4`
+renders both export formats from the configured run.
+
+Config files are TOML. The CLI loads the config through the package-level render
+config helpers before calling the rendering and export modules. Export formats
+use the same list shape in config and the CLI: `exports = ["svg", "mp4"]`,
+`--exports svg mp4`, or `--exports svg,mp4`.
 
 Render keyframe labels as an overlay:
 
 ```bash
-python3 scripts/create_fixed_frames.py --label-mode keyframe --label-position top-left
+python3 scripts/render_animation.py --label-mode keyframe --label-position top-left
 ```
 
 The first label mode uses the table's frame labels, such as `2016`, `2017`,
@@ -136,7 +162,7 @@ word-cloud placement or physics.
 Render the same sequence with the lightweight physics solver enabled:
 
 ```bash
-python3 scripts/create_fixed_frames.py --physics
+python3 scripts/render_animation.py --physics
 ```
 
 The physics path writes to `output/physics_frames/`.
@@ -148,8 +174,8 @@ bodies.
 Export GIF and MP4 outputs:
 
 ```bash
-python3 scripts/create_fixed_frames.py --gif --mp4
-python3 scripts/create_fixed_frames.py --physics --gif --mp4
+python3 scripts/render_animation.py --exports gif mp4
+python3 scripts/render_animation.py --physics --exports gif mp4
 ```
 
 GIF export uses Pillow. MP4 export uses the local `ffmpeg` binary.
@@ -157,7 +183,7 @@ The default playback rate is 12 fps. Use `--fps` for playback rate and
 `--frames-per-transition` for interpolation density:
 
 ```bash
-python3 scripts/create_fixed_frames.py --gif --fps 12 --frames-per-transition 24
+python3 scripts/render_animation.py --exports gif --fps 12 --frames-per-transition 24
 ```
 
 You can also set total duration or per-transition duration. In duration mode,
@@ -165,8 +191,8 @@ You can also set total duration or per-transition duration. In duration mode,
 script calculates the rendered frames per transition:
 
 ```bash
-python3 scripts/create_fixed_frames.py --gif --total-duration 6 --fps 24
-python3 scripts/create_fixed_frames.py --mp4 --seconds-per-transition 2 --fps 24
+python3 scripts/render_animation.py --exports gif --total-duration 6 --fps 24
+python3 scripts/render_animation.py --exports mp4 --seconds-per-transition 2 --fps 24
 ```
 
 The script nudges the effective FPS when needed so the animation lands exactly
@@ -175,8 +201,8 @@ on each keyframe and still matches the requested duration.
 Export sampled animated SVG:
 
 ```bash
-python3 scripts/create_fixed_frames.py --svg
-python3 scripts/create_fixed_frames.py --physics --svg
+python3 scripts/render_animation.py --exports svg
+python3 scripts/render_animation.py --physics --exports svg
 ```
 
 SVG export writes browser-playable SMIL animation to `output/fixed_animation.svg`

@@ -9,6 +9,7 @@ from .config import (
 )
 from .data import KeyframeDataError, KeyframeTable, load_keyframes
 from .labels import LabelConfig
+from .render_config import load_render_config
 
 __all__ = [
     "AnimationTiming",
@@ -17,6 +18,7 @@ __all__ = [
     "KeyframeDataError",
     "KeyframeTable",
     "LabelConfig",
+    "load_render_config",
     "load_keyframes",
     "resolve_animation_timing",
     "resolve_canvas_size",

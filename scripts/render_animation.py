@@ -1,10 +1,10 @@
-"""Render fixed-position animation frames from the example keyframes."""
+"""Render keyframe word-cloud animations and optional exports."""
 
 from __future__ import annotations
 
+import argparse
 import os
 import sys
-import argparse
 from pathlib import Path
 
 
@@ -24,48 +24,76 @@ from kinematic_word_cloud.config import (
 )
 from kinematic_word_cloud.data import KeyframeDataError, load_keyframes
 from kinematic_word_cloud.export import export_gif, export_mp4, export_svg
-from kinematic_word_cloud.labels import LABEL_MODES, LABEL_POSITIONS, LabelConfig
+from kinematic_word_cloud.labels import LABEL_MODES, LABEL_POSITIONS
+from kinematic_word_cloud.render_config import (
+    build_label_config,
+    display_path,
+    load_render_config,
+    optional_bool,
+    resolve_export_formats,
+    resolve_export_paths,
+    resolve_project_path,
+    resolve_timing_values,
+    setting,
+)
 from kinematic_word_cloud.render import render_fixed_animation_frames
 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument(
+        "--config",
+        type=Path,
+        default=None,
+        help="Path to a TOML render configuration file.",
+    )
+    parser.add_argument(
         "--input",
         type=Path,
-        default=PROJECT_ROOT / "examples" / "simple_keyframes.csv",
+        default=argparse.SUPPRESS,
         help="Path to a wide keyframe CSV.",
     )
     parser.add_argument(
         "--aspect",
         choices=ASPECT_CHOICES,
-        default=DEFAULT_ASPECT,
+        default=argparse.SUPPRESS,
         help="Canvas aspect-ratio preset.",
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=argparse.SUPPRESS,
+        help="Directory for rendered PNG frame sequences.",
+    )
+    parser.add_argument(
+        "--output",
+        type=Path,
+        default=argparse.SUPPRESS,
+        help=(
+            "Animation output file path. With multiple export formats, this is "
+            "used as a filename stem."
+        ),
     )
     parser.add_argument(
         "--physics",
         action="store_true",
+        default=argparse.SUPPRESS,
         help="Enable the lightweight spring-and-collision solver.",
     )
     parser.add_argument(
-        "--gif",
-        action="store_true",
-        help="Export the rendered frames to an animated GIF.",
-    )
-    parser.add_argument(
-        "--mp4",
-        action="store_true",
-        help="Export the rendered frames to an MP4 file using ffmpeg.",
-    )
-    parser.add_argument(
-        "--svg",
-        action="store_true",
-        help="Export the animation to sampled animated SVG.",
+        "--exports",
+        nargs="+",
+        default=argparse.SUPPRESS,
+        metavar="FORMAT",
+        help=(
+            "Animation export formats: gif, mp4, svg. Accepts space- or "
+            "comma-separated values."
+        ),
     )
     parser.add_argument(
         "--fps",
         type=float,
-        default=None,
+        default=argparse.SUPPRESS,
         help=(
             "Playback/export frame rate, or target frame rate with duration "
             f"options. Defaults to {DEFAULT_FPS:g}."
@@ -74,77 +102,117 @@ def main() -> None:
     parser.add_argument(
         "--total-duration",
         type=float,
-        default=None,
+        default=argparse.SUPPRESS,
         help="Total animation length in seconds. Calculates frames from target FPS.",
     )
     parser.add_argument(
         "--seconds-per-transition",
         "--transition-duration",
         type=float,
-        default=None,
+        default=argparse.SUPPRESS,
         help="Seconds between adjacent keyframes. Calculates frames from target FPS.",
     )
     parser.add_argument(
         "--frames-per-transition",
         type=int,
-        default=None,
+        default=argparse.SUPPRESS,
         help="Number of rendered frames between adjacent keyframes.",
     )
     parser.add_argument(
         "--label-mode",
         choices=LABEL_MODES,
-        default="none",
+        default=argparse.SUPPRESS,
         help="Overlay label mode.",
     )
     parser.add_argument(
         "--label-position",
         choices=LABEL_POSITIONS,
-        default="top-left",
+        default=argparse.SUPPRESS,
         help="Overlay label position.",
     )
     parser.add_argument(
         "--label-size",
         type=int,
-        default=56,
+        default=argparse.SUPPRESS,
         help="Overlay label font size.",
     )
     parser.add_argument(
         "--label-color",
-        default="#222222",
+        default=argparse.SUPPRESS,
         help="Overlay label CSS/Pillow color.",
     )
     parser.add_argument(
         "--label-opacity",
         type=float,
-        default=0.85,
+        default=argparse.SUPPRESS,
         help="Overlay label opacity from 0 to 1.",
     )
     parser.add_argument(
         "--label-margin",
         type=int,
-        default=32,
+        default=argparse.SUPPRESS,
         help="Overlay label margin in pixels.",
     )
     args = parser.parse_args()
+    try:
+        config_path = (
+            resolve_project_path(args.config, project_root=PROJECT_ROOT)
+            if args.config is not None
+            else None
+        )
+        config = load_render_config(config_path)
+    except KeyframeDataError as exc:
+        parser.error(str(exc))
 
-    input_path = args.input
-    if not input_path.is_absolute():
-        input_path = PROJECT_ROOT / input_path
+    input_path = resolve_project_path(
+        setting(
+            args,
+            config,
+            "input",
+            PROJECT_ROOT / "examples" / "simple_keyframes.csv",
+        ),
+        project_root=PROJECT_ROOT,
+    )
     table = load_keyframes(input_path)
-    canvas_size = resolve_canvas_size(args.aspect)
+    aspect = str(setting(args, config, "aspect", DEFAULT_ASPECT))
+    canvas_size = resolve_canvas_size(aspect)
+    timing_values = resolve_timing_values(args, config)
     try:
         timing = resolve_animation_timing(
             table,
-            frames_per_transition=args.frames_per_transition,
-            fps=args.fps,
-            total_duration_seconds=args.total_duration,
-            seconds_per_transition=args.seconds_per_transition,
+            frames_per_transition=timing_values["frames_per_transition"],
+            fps=timing_values["fps"],
+            total_duration_seconds=timing_values["total_duration"],
+            seconds_per_transition=timing_values["seconds_per_transition"],
         )
     except KeyframeDataError as exc:
         parser.error(str(exc))
-    label_config = _build_label_config(args, parser)
-    output_dir = PROJECT_ROOT / "output" / (
-        "physics_frames" if args.physics else "fixed_frames"
+    try:
+        label_config = build_label_config(args, config)
+        use_physics = optional_bool(
+            setting(args, config, "physics", False),
+            "physics",
+        )
+        export_formats = resolve_export_formats(args, config)
+    except KeyframeDataError as exc:
+        parser.error(str(exc))
+    output_name = "physics_animation" if use_physics else "fixed_animation"
+    output_dir = resolve_project_path(
+        setting(
+            args,
+            config,
+            "output_dir",
+            PROJECT_ROOT / "output" / (
+                "physics_frames" if use_physics else "fixed_frames"
+            ),
+        ),
+        project_root=PROJECT_ROOT,
+    )
+    export_paths = resolve_export_paths(
+        setting(args, config, "output", None),
+        output_name=output_name,
+        formats=export_formats,
+        project_root=PROJECT_ROOT,
     )
     frame_paths = render_fixed_animation_frames(
         table,
@@ -153,12 +221,12 @@ def main() -> None:
         width=canvas_size.width,
         height=canvas_size.height,
         random_state=7,
-        use_physics=args.physics,
+        use_physics=use_physics,
         label_config=label_config,
     )
-    relative_output_dir = output_dir.relative_to(PROJECT_ROOT)
+    relative_output_dir = display_path(output_dir, project_root=PROJECT_ROOT)
     print(f"Wrote {len(frame_paths)} frames to {relative_output_dir}")
-    print(f"Canvas: {canvas_size.width}x{canvas_size.height} ({args.aspect})")
+    print(f"Canvas: {canvas_size.width}x{canvas_size.height} ({aspect})")
     target_fps = (
         f", target {timing.target_fps:.3f} fps"
         if abs(timing.fps - timing.target_fps) > 0.001
@@ -174,60 +242,36 @@ def main() -> None:
         f"{target_fps}"
     )
 
-    output_name = "physics_animation" if args.physics else "fixed_animation"
-    if args.gif:
+    if "gif" in export_formats:
         gif_path = export_gif(
             frame_paths,
-            PROJECT_ROOT / "output" / f"{output_name}.gif",
+            export_paths["gif"],
             fps=timing.fps,
         )
-        print(f"Wrote {gif_path.relative_to(PROJECT_ROOT)}")
+        print(f"Wrote {display_path(gif_path, project_root=PROJECT_ROOT)}")
 
-    if args.mp4:
+    if "mp4" in export_formats:
         mp4_path = export_mp4(
             frame_paths,
-            PROJECT_ROOT / "output" / f"{output_name}.mp4",
+            export_paths["mp4"],
             fps=timing.fps,
         )
-        print(f"Wrote {mp4_path.relative_to(PROJECT_ROOT)}")
+        print(f"Wrote {display_path(mp4_path, project_root=PROJECT_ROOT)}")
 
-    if args.svg:
+    if "svg" in export_formats:
         svg_path = export_svg(
             table,
-            PROJECT_ROOT / "output" / f"{output_name}.svg",
+            export_paths["svg"],
             frames_per_transition=timing.frames_per_transition,
             fps=timing.fps,
             duration_seconds=timing.duration_seconds,
             width=canvas_size.width,
             height=canvas_size.height,
             random_state=7,
-            use_physics=args.physics,
+            use_physics=use_physics,
             label_config=label_config,
         )
-        print(f"Wrote {svg_path.relative_to(PROJECT_ROOT)}")
-
-
-def _build_label_config(
-    args: argparse.Namespace,
-    parser: argparse.ArgumentParser,
-) -> LabelConfig | None:
-    if args.label_mode == "none":
-        return None
-    if args.label_size <= 0:
-        parser.error("--label-size must be greater than zero.")
-    if args.label_margin < 0:
-        parser.error("--label-margin must be non-negative.")
-    if not 0 <= args.label_opacity <= 1:
-        parser.error("--label-opacity must be between 0 and 1.")
-
-    return LabelConfig(
-        mode=args.label_mode,
-        position=args.label_position,
-        font_size=args.label_size,
-        color=args.label_color,
-        opacity=args.label_opacity,
-        margin=args.label_margin,
-    )
+        print(f"Wrote {display_path(svg_path, project_root=PROJECT_ROOT)}")
 
 
 if __name__ == "__main__":
