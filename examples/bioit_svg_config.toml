@@ -1,5 +1,6 @@
 input = "examples/bioit_top_terms_2016_2026.csv"
 aspect = "16:9"
+background_color = "white"
 exports = ["svg"]
 output = "output/bioit_top_terms"
 output_dir = "output/bioit_top_terms_frames"

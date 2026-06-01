@@ -64,6 +64,11 @@ def main() -> None:
         help="Canvas aspect-ratio preset.",
     )
     parser.add_argument(
+        "--background-color",
+        default=argparse.SUPPRESS,
+        help="Canvas background color for PNG, GIF, MP4, and SVG outputs.",
+    )
+    parser.add_argument(
         "--output-dir",
         type=Path,
         default=argparse.SUPPRESS,
@@ -216,6 +221,7 @@ def main() -> None:
     table = load_keyframes(input_path)
     aspect = str(setting(args, config, "aspect", DEFAULT_ASPECT))
     canvas_size = resolve_canvas_size(aspect)
+    background_color = str(setting(args, config, "background_color", "white"))
     timing_values = resolve_timing_values(args, config)
     try:
         timing = resolve_animation_timing(
@@ -266,6 +272,7 @@ def main() -> None:
         frames_per_transition=timing.frames_per_transition,
         width=canvas_size.width,
         height=canvas_size.height,
+        background_color=background_color,
         random_state=7,
         use_physics=use_physics,
         label_config=label_config,
@@ -275,6 +282,7 @@ def main() -> None:
     relative_output_dir = display_path(output_dir, project_root=PROJECT_ROOT)
     print(f"Wrote {len(frame_paths)} frames to {relative_output_dir}")
     print(f"Canvas: {canvas_size.width}x{canvas_size.height} ({aspect})")
+    print(f"Background: {background_color}")
     print(f"Interpolation: {interpolation}")
     target_fps = (
         f", target {timing.target_fps:.3f} fps"
@@ -316,6 +324,7 @@ def main() -> None:
             duration_seconds=timing.duration_seconds,
             width=canvas_size.width,
             height=canvas_size.height,
+            background_color=background_color,
             random_state=7,
             use_physics=use_physics,
             label_config=label_config,

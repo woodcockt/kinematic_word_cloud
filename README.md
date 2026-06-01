@@ -159,6 +159,14 @@ python3 scripts/render_animation.py --aspect 9:16
 SVG export uses the same canvas as its `viewBox`, so it scales cleanly while
 keeping the selected layout aspect ratio.
 
+Set a custom background color:
+
+```bash
+python3 scripts/render_animation.py --background-color '#111111'
+```
+
+In TOML, use `background_color = "#111111"`.
+
 Render with a different input CSV:
 
 ```bash
