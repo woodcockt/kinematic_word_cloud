@@ -149,6 +149,44 @@ config helpers before calling the rendering and export modules. Export formats
 use the same list shape in config and the CLI: `exports = ["svg", "mp4"]`,
 `--exports svg mp4`, or `--exports svg,mp4`.
 
+Choose deterministic color behavior:
+
+```bash
+python3 scripts/render_animation.py --palette okabe-ito --color-by group
+python3 scripts/render_animation.py --palette-file examples/palette_bioit.hex --color-by word
+python3 scripts/render_animation.py --color-by single --default-color '#222222'
+python3 scripts/render_animation.py --group-color 'design=#2A9D8F' --group-color 'motion=#4A2C7A'
+```
+
+Available palettes are `default`, `tableau`, and `okabe-ito`. `color_by` can be
+`group`, `word`, or `single`. Spreadsheet `color` values always win first. In
+`group` mode, configured group colors win next, then palette-derived group
+colors. Ungrouped words use deterministic palette colors unless `color_by` is
+`single`, in which case they use `default_color`. In TOML, group overrides use
+a `[group_colors]` table:
+
+```toml
+palette = "okabe-ito"
+color_by = "group"
+
+[group_colors]
+design = "#2A9D8F"
+motion = "#4A2C7A"
+```
+
+TOML can also use an inline custom palette or import a simple palette file:
+
+```toml
+palette = ["#0072B2", "#009E73", "#D55E00"]
+
+# or
+palette_file = "examples/palette_bioit.hex"
+```
+
+`palette_file` supports plain text or `.hex` files with one hex color per line,
+plus GIMP/Inkscape `.gpl` palette files. Binary Adobe `.ase` and `.aco` files
+are common palette exchange formats, but they are not supported yet.
+
 Render keyframe labels as an overlay:
 
 ```bash

@@ -11,7 +11,7 @@ from PIL import Image
 from .config import DEFAULT_CANVAS_SIZE
 from .data import KeyframeTable
 from .labels import LabelConfig, sample_labels, svg_label_position
-from .layout import build_peak_layout
+from .layout import ColorOptions, build_peak_layout
 from .physics import PhysicsConfig
 from .render import (
     _build_anchor_layout,
@@ -124,6 +124,7 @@ def export_svg(
     physics_config: PhysicsConfig | None = None,
     label_config: LabelConfig | None = None,
     interpolation: str = DEFAULT_INTERPOLATION,
+    color_options: ColorOptions | None = None,
     repeat_count: str = "indefinite",
 ) -> Path:
     """Export a sampled animated SVG from the keyframe table."""
@@ -138,6 +139,7 @@ def export_svg(
         background_color=background_color,
         random_state=random_state,
         colormap=colormap,
+        color_options=color_options,
     )
     samples = _sample_svg_frames(
         table,
@@ -147,6 +149,7 @@ def export_svg(
         use_physics=use_physics,
         physics_config=physics_config,
         interpolation=interpolation,
+        color_options=color_options,
     )
     duration = (
         float(duration_seconds)
@@ -221,6 +224,7 @@ def _sample_svg_frames(
     use_physics: bool,
     physics_config: PhysicsConfig | None,
     interpolation: str,
+    color_options: ColorOptions | None,
 ) -> list[dict[str, dict[str, float]]]:
     font_path = getattr(layout.wordcloud, "font_path")
     peak_sizes = _measure_peak_sizes(layout, font_path=font_path)
@@ -234,6 +238,7 @@ def _sample_svg_frames(
             background_color=getattr(layout.wordcloud, "background_color", "white"),
             random_state=getattr(layout.wordcloud, "random_state", 42),
             colormap=getattr(layout.wordcloud, "colormap", "viridis"),
+            color_options=color_options,
         )
         simulator = _build_physics_simulator(
             layout,

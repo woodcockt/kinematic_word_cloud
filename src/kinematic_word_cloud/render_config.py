@@ -5,8 +5,16 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Mapping
 
-from .data import KeyframeDataError
+from .data import HEX_COLOR_PATTERN, KeyframeDataError
 from .labels import LABEL_MODES, LABEL_POSITIONS, LabelConfig
+from .layout import (
+    COLOR_BY_MODES,
+    COLOR_PALETTES,
+    DEFAULT_COLOR_BY,
+    DEFAULT_FALLBACK_COLOR,
+    DEFAULT_PALETTE_NAME,
+    ColorOptions,
+)
 from .timeline import DEFAULT_INTERPOLATION, INTERPOLATION_MODES
 
 
@@ -178,6 +186,38 @@ def resolve_interpolation(
     return interpolation
 
 
+def resolve_color_options(
+    cli_values: object,
+    config: Mapping[str, Any],
+    *,
+    project_root: Path,
+) -> ColorOptions:
+    """Resolve word color assignment options."""
+
+    palette = _resolve_palette(cli_values, config, project_root=project_root)
+
+    color_by = str(setting(cli_values, config, "color_by", DEFAULT_COLOR_BY))
+    if color_by not in COLOR_BY_MODES:
+        raise KeyframeDataError(
+            "color_by must be one of: " + ", ".join(COLOR_BY_MODES)
+        )
+
+    default_color = _normalize_hex_color(
+        setting(cli_values, config, "default_color", DEFAULT_FALLBACK_COLOR),
+        "default_color",
+    )
+    group_colors = _parse_config_group_colors(config.get("group_colors", {}))
+    if hasattr(cli_values, "group_color"):
+        group_colors.update(_parse_cli_group_colors(getattr(cli_values, "group_color")))
+
+    return ColorOptions(
+        palette=palette,
+        color_by=color_by,
+        group_colors=group_colors,
+        default_color=default_color,
+    )
+
+
 def resolve_export_formats(
     cli_values: object,
     config: Mapping[str, Any],
@@ -330,6 +370,157 @@ def _parse_export_values(
     if not formats and not allow_empty:
         raise KeyframeDataError("--exports must include at least one format.")
     return formats
+
+
+def _parse_config_group_colors(value: Any) -> dict[str, str]:
+    if value is None:
+        return {}
+    if not isinstance(value, Mapping):
+        raise KeyframeDataError("Config key 'group_colors' must be a table.")
+
+    return {
+        str(group): _normalize_hex_color(color, f"group_colors.{group}")
+        for group, color in value.items()
+    }
+
+
+def _parse_cli_group_colors(values: Any) -> dict[str, str]:
+    if isinstance(values, str):
+        raw_values = [values]
+    elif isinstance(values, list):
+        raw_values = values
+    else:
+        raise KeyframeDataError("--group-color must be GROUP=#RRGGBB.")
+
+    group_colors: dict[str, str] = {}
+    for raw_value in raw_values:
+        text = str(raw_value)
+        if "=" not in text:
+            raise KeyframeDataError("--group-color must be GROUP=#RRGGBB.")
+        group, color = text.split("=", 1)
+        group = group.strip()
+        if not group:
+            raise KeyframeDataError("--group-color group name cannot be blank.")
+        group_colors[group] = _normalize_hex_color(color, f"group color for {group}")
+
+    return group_colors
+
+
+def _resolve_palette(
+    cli_values: object,
+    config: Mapping[str, Any],
+    *,
+    project_root: Path,
+) -> tuple[str, ...]:
+    cli_sets_palette = hasattr(cli_values, "palette")
+    cli_sets_palette_file = hasattr(cli_values, "palette_file")
+
+    if cli_sets_palette_file:
+        return _load_palette_file(
+            resolve_project_path(
+                getattr(cli_values, "palette_file"),
+                project_root=project_root,
+            )
+        )
+    if cli_sets_palette:
+        return _named_palette(getattr(cli_values, "palette"))
+    if "palette_file" in config:
+        return _load_palette_file(
+            resolve_project_path(config["palette_file"], project_root=project_root)
+        )
+
+    palette_value = config.get("palette", DEFAULT_PALETTE_NAME)
+    if isinstance(palette_value, list):
+        return _normalize_palette(palette_value, "palette")
+    return _named_palette(palette_value)
+
+
+def _named_palette(value: Any) -> tuple[str, ...]:
+    palette_name = str(value)
+    if palette_name not in COLOR_PALETTES:
+        raise KeyframeDataError(
+            "palette must be one of: " + ", ".join(COLOR_PALETTES)
+        )
+    return COLOR_PALETTES[palette_name]
+
+
+def _normalize_palette(values: list[Any], name: str) -> tuple[str, ...]:
+    if not values:
+        raise KeyframeDataError(f"{name} must contain at least one color.")
+    return tuple(
+        _normalize_hex_color(value, f"{name}[{index}]")
+        for index, value in enumerate(values)
+    )
+
+
+def _load_palette_file(path: Path) -> tuple[str, ...]:
+    try:
+        text = path.read_text(encoding="utf-8")
+    except FileNotFoundError as exc:
+        raise KeyframeDataError(f"Palette file not found: {path}") from exc
+    except UnicodeDecodeError as exc:
+        raise KeyframeDataError(
+            f"Palette file must be UTF-8 text, .hex, or .gpl: {path}"
+        ) from exc
+
+    if path.suffix.lower() == ".gpl":
+        colors = _parse_gpl_palette(text, str(path))
+    else:
+        colors = _parse_text_palette(text, str(path))
+
+    if not colors:
+        raise KeyframeDataError(f"Palette file contains no colors: {path}")
+    return tuple(colors)
+
+
+def _parse_text_palette(text: str, name: str) -> list[str]:
+    colors: list[str] = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith(";"):
+            continue
+        if stripped.startswith("#") and HEX_COLOR_PATTERN.match(stripped) is None:
+            continue
+
+        for token in stripped.replace(",", " ").split():
+            if HEX_COLOR_PATTERN.match(token):
+                colors.append(_normalize_hex_color(token, name))
+                break
+
+    return colors
+
+
+def _parse_gpl_palette(text: str, name: str) -> list[str]:
+    colors: list[str] = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        parts = stripped.split()
+        if len(parts) < 3:
+            continue
+        try:
+            red, green, blue = (int(parts[index]) for index in range(3))
+        except ValueError:
+            continue
+        if not all(0 <= channel <= 255 for channel in (red, green, blue)):
+            raise KeyframeDataError(f"Invalid RGB value in palette file {name}.")
+        colors.append(f"#{red:02X}{green:02X}{blue:02X}")
+
+    return colors
+
+
+def _normalize_hex_color(value: Any, name: str) -> str:
+    text = str(value).strip()
+    match = HEX_COLOR_PATTERN.match(text)
+    if match is None:
+        raise KeyframeDataError(f"{name} must be a hex color: #RGB or #RRGGBB.")
+
+    digits = match.group(1)
+    if len(digits) == 3:
+        digits = "".join(channel * 2 for channel in digits)
+
+    return f"#{digits.upper()}"
 
 
 def _load_toml(path: Path) -> dict[str, Any]:

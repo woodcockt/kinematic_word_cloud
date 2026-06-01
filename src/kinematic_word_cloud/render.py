@@ -10,7 +10,12 @@ from PIL import Image, ImageDraw, ImageFont
 from .config import DEFAULT_CANVAS_SIZE
 from .data import KeyframeTable
 from .labels import LabelConfig, label_for_frame, render_label_overlay
-from .layout import CloudLayout, build_layout_from_frequencies, build_peak_layout
+from .layout import (
+    CloudLayout,
+    ColorOptions,
+    build_layout_from_frequencies,
+    build_peak_layout,
+)
 from .physics import PhysicsConfig, PhysicsSimulator, WordBodySpec
 from .timeline import DEFAULT_INTERPOLATION, iter_timeline_frames
 
@@ -24,6 +29,7 @@ def render_peak_cloud(
     background_color: str = "white",
     random_state: int = 42,
     colormap: str = "viridis",
+    color_options: ColorOptions | None = None,
 ) -> CloudLayout:
     """Render the peak-value starting cloud to an image file."""
 
@@ -34,6 +40,7 @@ def render_peak_cloud(
         background_color=background_color,
         random_state=random_state,
         colormap=colormap,
+        color_options=color_options,
     )
 
     output = Path(output_path)
@@ -125,6 +132,7 @@ def render_fixed_animation_frames(
     physics_config: PhysicsConfig | None = None,
     label_config: LabelConfig | None = None,
     interpolation: str = DEFAULT_INTERPOLATION,
+    color_options: ColorOptions | None = None,
 ) -> list[Path]:
     """Render PNG frames for the whole keyframe timeline."""
 
@@ -135,6 +143,7 @@ def render_fixed_animation_frames(
         background_color=background_color,
         random_state=random_state,
         colormap=colormap,
+        color_options=color_options,
     )
     output = Path(output_dir)
     output.mkdir(parents=True, exist_ok=True)
@@ -149,6 +158,7 @@ def render_fixed_animation_frames(
             background_color=background_color,
             random_state=random_state,
             colormap=colormap,
+            color_options=color_options,
         )
         if use_physics
         else None
@@ -205,6 +215,7 @@ def _build_anchor_layout(
     background_color: str,
     random_state: int,
     colormap: str,
+    color_options: ColorOptions | None,
 ) -> CloudLayout:
     return build_layout_from_frequencies(
         table.frame_values(table.frames[0]),
@@ -215,6 +226,7 @@ def _build_anchor_layout(
         background_color=background_color,
         random_state=random_state,
         colormap=colormap,
+        color_options=color_options,
     )
 
 

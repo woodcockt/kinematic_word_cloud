@@ -24,6 +24,46 @@ DEFAULT_COLOR_PALETTE = (
     "#264653",
     "#C05780",
 )
+TABLEAU_COLOR_PALETTE = (
+    "#4E79A7",
+    "#F28E2B",
+    "#E15759",
+    "#76B7B2",
+    "#59A14F",
+    "#EDC948",
+    "#B07AA1",
+    "#FF9DA7",
+    "#9C755F",
+    "#BAB0AC",
+)
+OKABE_ITO_COLOR_PALETTE = (
+    "#0072B2",
+    "#E69F00",
+    "#009E73",
+    "#D55E00",
+    "#CC79A7",
+    "#56B4E9",
+    "#F0E442",
+)
+COLOR_PALETTES: dict[str, tuple[str, ...]] = {
+    "default": DEFAULT_COLOR_PALETTE,
+    "tableau": TABLEAU_COLOR_PALETTE,
+    "okabe-ito": OKABE_ITO_COLOR_PALETTE,
+}
+DEFAULT_PALETTE_NAME = "default"
+DEFAULT_COLOR_BY = "group"
+COLOR_BY_MODES: tuple[str, ...] = ("group", "word", "single")
+DEFAULT_FALLBACK_COLOR = "#222222"
+
+
+@dataclass(frozen=True)
+class ColorOptions:
+    """Color assignment options for generated word-cloud layouts."""
+
+    palette: tuple[str, ...] = DEFAULT_COLOR_PALETTE
+    color_by: str = DEFAULT_COLOR_BY
+    group_colors: Mapping[str, str] | None = None
+    default_color: str = DEFAULT_FALLBACK_COLOR
 
 
 @dataclass(frozen=True)
@@ -58,6 +98,7 @@ def build_peak_layout(
     colormap: str = "viridis",
     prefer_horizontal: float = 0.95,
     color_palette: tuple[str, ...] = DEFAULT_COLOR_PALETTE,
+    color_options: ColorOptions | None = None,
 ) -> CloudLayout:
     """Generate a static layout from each word's peak value."""
 
@@ -72,6 +113,7 @@ def build_peak_layout(
         colormap=colormap,
         prefer_horizontal=prefer_horizontal,
         color_palette=color_palette,
+        color_options=color_options,
     )
 
 
@@ -87,6 +129,7 @@ def build_layout_from_frequencies(
     colormap: str = "viridis",
     prefer_horizontal: float = 0.95,
     color_palette: tuple[str, ...] = DEFAULT_COLOR_PALETTE,
+    color_options: ColorOptions | None = None,
 ) -> CloudLayout:
     """Generate a `wordcloud` layout from word frequencies."""
 
@@ -108,6 +151,7 @@ def build_layout_from_frequencies(
         explicit_colors=explicit_colors or {},
         word_groups=word_groups or {},
         color_palette=color_palette,
+        color_options=color_options,
     )
 
     wordcloud = WordCloud(
@@ -134,19 +178,30 @@ def build_color_func(
     explicit_colors: Mapping[str, str],
     word_groups: Mapping[str, str],
     color_palette: tuple[str, ...] = DEFAULT_COLOR_PALETTE,
+    color_options: ColorOptions | None = None,
 ):
     """Build a deterministic `wordcloud` color function.
 
     Color precedence is:
     1. explicit word color,
-    2. deterministic group color,
-    3. deterministic fallback color by word.
+    2. configured or deterministic group color when color_by="group",
+    3. deterministic fallback color by word when color_by="group" or "word",
+    4. neutral default color when color_by="single".
     """
 
-    if not color_palette:
+    options = color_options or ColorOptions(palette=color_palette)
+    if options.color_by not in COLOR_BY_MODES:
+        raise ValueError(f"color_by must be one of: {', '.join(COLOR_BY_MODES)}")
+    if not options.palette:
         raise ValueError("Color palette must contain at least one color.")
 
-    group_colors = _assign_group_colors(word_groups.values(), color_palette)
+    group_colors = {
+        **_assign_group_colors(word_groups.values(), options.palette),
+        **{
+            str(group): str(color)
+            for group, color in (options.group_colors or {}).items()
+        },
+    }
 
     def color_func(word, *args, **kwargs):
         word = str(word)
@@ -154,10 +209,13 @@ def build_color_func(
             return explicit_colors[word]
 
         group = word_groups.get(word)
-        if group is not None:
+        if options.color_by == "group" and group is not None:
             return group_colors[group]
 
-        return color_palette[_stable_index(word, len(color_palette))]
+        if options.color_by in {"group", "word"}:
+            return options.palette[_stable_index(word, len(options.palette))]
+
+        return options.default_color
 
     return color_func
 

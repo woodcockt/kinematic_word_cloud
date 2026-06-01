@@ -25,11 +25,13 @@ from kinematic_word_cloud.config import (
 from kinematic_word_cloud.data import KeyframeDataError, load_keyframes
 from kinematic_word_cloud.export import export_gif, export_mp4, export_svg
 from kinematic_word_cloud.labels import LABEL_MODES, LABEL_POSITIONS
+from kinematic_word_cloud.layout import COLOR_BY_MODES, COLOR_PALETTES
 from kinematic_word_cloud.render_config import (
     build_label_config,
     display_path,
     load_render_config,
     optional_bool,
+    resolve_color_options,
     resolve_export_formats,
     resolve_export_paths,
     resolve_interpolation,
@@ -127,6 +129,36 @@ def main() -> None:
         help="Value interpolation curve between adjacent keyframes.",
     )
     parser.add_argument(
+        "--palette",
+        choices=tuple(COLOR_PALETTES),
+        default=argparse.SUPPRESS,
+        help="Named palette for deterministic word or group colors.",
+    )
+    parser.add_argument(
+        "--palette-file",
+        type=Path,
+        default=argparse.SUPPRESS,
+        help="Path to a text, .hex, or GIMP .gpl palette file.",
+    )
+    parser.add_argument(
+        "--color-by",
+        choices=COLOR_BY_MODES,
+        default=argparse.SUPPRESS,
+        help="How to color words without explicit spreadsheet colors.",
+    )
+    parser.add_argument(
+        "--default-color",
+        default=argparse.SUPPRESS,
+        help="Fallback hex color used when --color-by single.",
+    )
+    parser.add_argument(
+        "--group-color",
+        action="append",
+        default=argparse.SUPPRESS,
+        metavar="GROUP=#RRGGBB",
+        help="Explicit group color mapping. Repeat for multiple groups.",
+    )
+    parser.add_argument(
         "--label-mode",
         choices=LABEL_MODES,
         default=argparse.SUPPRESS,
@@ -202,6 +234,11 @@ def main() -> None:
             "physics",
         )
         interpolation = resolve_interpolation(args, config)
+        color_options = resolve_color_options(
+            args,
+            config,
+            project_root=PROJECT_ROOT,
+        )
         export_formats = resolve_export_formats(args, config)
     except KeyframeDataError as exc:
         parser.error(str(exc))
@@ -233,6 +270,7 @@ def main() -> None:
         use_physics=use_physics,
         label_config=label_config,
         interpolation=interpolation,
+        color_options=color_options,
     )
     relative_output_dir = display_path(output_dir, project_root=PROJECT_ROOT)
     print(f"Wrote {len(frame_paths)} frames to {relative_output_dir}")
@@ -282,6 +320,7 @@ def main() -> None:
             use_physics=use_physics,
             label_config=label_config,
             interpolation=interpolation,
+            color_options=color_options,
         )
         print(f"Wrote {display_path(svg_path, project_root=PROJECT_ROOT)}")
 
