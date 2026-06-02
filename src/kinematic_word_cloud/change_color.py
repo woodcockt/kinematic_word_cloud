@@ -95,27 +95,35 @@ def interpolate_color_scale(value: float, colors: tuple[str, ...]) -> str:
     right_index = left_index + 1
     local_t = scaled_position - left_index
     eased_t = local_t * local_t * (3.0 - 2.0 * local_t)
-    left_rgb = _hex_to_rgb(colors[left_index])
-    right_rgb = _hex_to_rgb(colors[right_index])
+    left_rgba = _hex_to_rgba(colors[left_index])
+    right_rgba = _hex_to_rgba(colors[right_index])
     blended = tuple(
         round(left + (right - left) * eased_t)
-        for left, right in zip(left_rgb, right_rgb, strict=True)
+        for left, right in zip(left_rgba, right_rgba, strict=True)
     )
-    return _rgb_to_hex(blended)
+    return _rgba_to_hex(blended)
 
 
-def _hex_to_rgb(color: str) -> tuple[int, int, int]:
+def _hex_to_rgba(color: str) -> tuple[int, int, int, int]:
     text = color.strip().lstrip("#")
-    if len(text) == 3:
+    if len(text) in {3, 4}:
         text = "".join(character * 2 for character in text)
-    if len(text) != 6:
-        raise ValueError(f"Expected #RGB or #RRGGBB color, got {color!r}.")
+    if len(text) == 6:
+        text += "FF"
+    if len(text) != 8:
+        raise ValueError(
+            f"Expected #RGB, #RGBA, #RRGGBB, or #RRGGBBAA color, got {color!r}."
+        )
     return (
         int(text[0:2], 16),
         int(text[2:4], 16),
         int(text[4:6], 16),
+        int(text[6:8], 16),
     )
 
 
-def _rgb_to_hex(rgb: tuple[int, int, int]) -> str:
-    return "#" + "".join(f"{channel:02X}" for channel in rgb)
+def _rgba_to_hex(rgba: tuple[int, int, int, int]) -> str:
+    red, green, blue, alpha = rgba
+    if alpha >= 255:
+        return f"#{red:02X}{green:02X}{blue:02X}"
+    return f"#{red:02X}{green:02X}{blue:02X}{alpha:02X}"

@@ -22,7 +22,9 @@ from .timeline import DEFAULT_INTERPOLATION, INTERPOLATION_MODES
 
 
 CONFIG_SUFFIX = ".toml"
-EXPORT_FORMATS = ("gif", "mp4", "svg")
+FRAMES_EXPORT_FORMAT = "frames"
+ANIMATION_EXPORT_FORMATS = ("gif", "mp4", "svg")
+EXPORT_FORMATS = (FRAMES_EXPORT_FORMAT, *ANIMATION_EXPORT_FORMATS)
 
 
 def load_render_config(path: str | Path | None) -> dict[str, Any]:
@@ -506,10 +508,16 @@ def resolve_export_formats(
                 f"Use exports = [...] instead of top-level '{export_format}'."
             )
 
+    if hasattr(cli_values, "frames_only") and hasattr(cli_values, "exports"):
+        raise KeyframeDataError("Use either --frames-only or --exports, not both.")
+    if hasattr(cli_values, "frames_only"):
+        return set()
     if hasattr(cli_values, "exports"):
-        return _parse_cli_exports(getattr(cli_values, "exports"))
+        return _animation_export_formats(_parse_cli_exports(getattr(cli_values, "exports")))
+    if optional_bool(setting(cli_values, config, "frames_only", False), "frames_only"):
+        return set()
     if "exports" in config:
-        return _parse_config_exports(config["exports"])
+        return _animation_export_formats(_parse_config_exports(config["exports"]))
 
     return set()
 
@@ -523,22 +531,23 @@ def resolve_export_paths(
 ) -> dict[str, Path]:
     """Resolve output file paths for requested export formats."""
 
+    animation_formats = _animation_export_formats(formats)
     if output is None:
         return {
             export_format: project_root / "output" / f"{output_name}.{export_format}"
-            for export_format in formats
+            for export_format in animation_formats
         }
 
     output_path = resolve_project_path(output, project_root=project_root)
-    if len(formats) == 1:
-        export_format = next(iter(formats))
+    if len(animation_formats) == 1:
+        export_format = next(iter(animation_formats))
         if output_path.suffix:
             return {export_format: output_path}
         return {export_format: output_path.with_suffix(f".{export_format}")}
 
     return {
         export_format: output_path.with_suffix(f".{export_format}")
-        for export_format in formats
+        for export_format in animation_formats
     }
 
 
@@ -693,6 +702,14 @@ def _parse_export_values(
     return formats
 
 
+def _animation_export_formats(formats: set[str]) -> set[str]:
+    return {
+        export_format
+        for export_format in formats
+        if export_format != FRAMES_EXPORT_FORMAT
+    }
+
+
 def _parse_config_group_colors(value: Any) -> dict[str, str]:
     if value is None:
         return {}
@@ -711,13 +728,13 @@ def _parse_cli_group_colors(values: Any) -> dict[str, str]:
     elif isinstance(values, list):
         raw_values = values
     else:
-        raise KeyframeDataError("--group-color must be GROUP=#RRGGBB.")
+        raise KeyframeDataError("--group-color must be GROUP=#RRGGBB[AA].")
 
     group_colors: dict[str, str] = {}
     for raw_value in raw_values:
         text = str(raw_value)
         if "=" not in text:
-            raise KeyframeDataError("--group-color must be GROUP=#RRGGBB.")
+            raise KeyframeDataError("--group-color must be GROUP=#RRGGBB[AA].")
         group, color = text.split("=", 1)
         group = group.strip()
         if not group:
@@ -862,10 +879,12 @@ def _normalize_hex_color(value: Any, name: str) -> str:
     text = str(value).strip()
     match = HEX_COLOR_PATTERN.match(text)
     if match is None:
-        raise KeyframeDataError(f"{name} must be a hex color: #RGB or #RRGGBB.")
+        raise KeyframeDataError(
+            f"{name} must be a hex color: #RGB, #RGBA, #RRGGBB, or #RRGGBBAA."
+        )
 
     digits = match.group(1)
-    if len(digits) == 3:
+    if len(digits) in {3, 4}:
         digits = "".join(channel * 2 for channel in digits)
 
     return f"#{digits.upper()}"

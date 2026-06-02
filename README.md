@@ -141,6 +141,7 @@ By default, the script uses fixed word positions and writes a PNG sequence to
 Choose output destinations:
 
 ```bash
+python3 scripts/render_animation.py --frames-only --output-dir output/demo_frames
 python3 scripts/render_animation.py --exports svg --output output/demo.svg
 python3 scripts/render_animation.py --exports gif mp4 --output output/demo
 python3 scripts/render_animation.py --output-dir output/demo_frames
@@ -166,6 +167,22 @@ python3 scripts/render_animation.py --background-color '#111111'
 ```
 
 In TOML, use `background_color = "#111111"`.
+
+For video-editor compositing, render transparent PNG overlay frames:
+
+```bash
+python3 scripts/render_animation.py \
+  --frames-only \
+  --background-color transparent \
+  --output-dir output/overlay_frames
+```
+
+Import the PNG sequence into a video editor such as DaVinci Resolve, place it
+above your background footage or image layer, and do the final audio, movement,
+transitions, and color work there. Standard MP4 export uses H.264 and does not
+preserve alpha, so `--background-color transparent --exports mp4` is rejected.
+Use `exports = ["frames"]` or `frames_only = true` in TOML for the same overlay
+workflow.
 
 Add a per-word raster bloom effect:
 
@@ -246,7 +263,7 @@ renders both export formats from the configured run.
 Config files are TOML. The CLI loads the config through the package-level render
 config helpers before calling the rendering and export modules. Export formats
 use the same list shape in config and the CLI: `exports = ["svg", "mp4"]`,
-`--exports svg mp4`, or `--exports svg,mp4`.
+`exports = ["frames"]`, `--exports svg mp4`, or `--exports svg,mp4`.
 
 Choose deterministic color behavior:
 
@@ -265,6 +282,11 @@ Available palettes are `default`, `tableau`, and `okabe-ito`. `color_by` can be
 colors win next, then palette-derived group colors. Ungrouped words use
 deterministic palette colors unless `color_by` is `single`, in which case they
 use `default_color`.
+
+Word colors can include alpha with `#RRGGBBAA` or shorthand `#RGBA`, such as
+`#FF4DA680` for a roughly 50% opaque pink. This works for spreadsheet `color`
+values, `default_color`, configured group colors, and change-mode color stops,
+and is especially useful with transparent PNG overlay frames.
 
 `absolutechange` mode overrides spreadsheet colors, group colors, palettes, and
 `default_color` at render time. Words use the no-change color when their start
