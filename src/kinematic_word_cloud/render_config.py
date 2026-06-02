@@ -81,6 +81,24 @@ def setting(
             if alias in label_config:
                 return label_config[alias]
 
+    absolutechange_config = config.get("absolutechange")
+    if key.startswith("absolutechange_") and isinstance(
+        absolutechange_config,
+        Mapping,
+    ):
+        absolutechange_key = key.removeprefix("absolutechange_")
+        absolutechange_aliases = {
+            "growth_color": ("growth_color", "growth"),
+            "decline_color": ("decline_color", "decline", "reduction"),
+            "no_change_color": ("no_change_color", "no_change", "neutral"),
+        }
+        for alias in absolutechange_aliases.get(
+            absolutechange_key,
+            (absolutechange_key,),
+        ):
+            if alias in absolutechange_config:
+                return absolutechange_config[alias]
+
     return default
 
 
@@ -205,9 +223,37 @@ def resolve_color_options(
             "color_by must be one of: " + ", ".join(COLOR_BY_MODES)
         )
 
+    color_defaults = ColorOptions()
     default_color = _normalize_hex_color(
         setting(cli_values, config, "default_color", DEFAULT_FALLBACK_COLOR),
         "default_color",
+    )
+    absolutechange_growth_color = _normalize_hex_color(
+        setting(
+            cli_values,
+            config,
+            "absolutechange_growth_color",
+            color_defaults.absolutechange_growth_color,
+        ),
+        "absolutechange_growth_color",
+    )
+    absolutechange_decline_color = _normalize_hex_color(
+        setting(
+            cli_values,
+            config,
+            "absolutechange_decline_color",
+            color_defaults.absolutechange_decline_color,
+        ),
+        "absolutechange_decline_color",
+    )
+    absolutechange_no_change_color = _normalize_hex_color(
+        setting(
+            cli_values,
+            config,
+            "absolutechange_no_change_color",
+            color_defaults.absolutechange_no_change_color,
+        ),
+        "absolutechange_no_change_color",
     )
     group_colors = _parse_config_group_colors(config.get("group_colors", {}))
     if hasattr(cli_values, "group_color"):
@@ -218,6 +264,9 @@ def resolve_color_options(
         color_by=color_by,
         group_colors=group_colors,
         default_color=default_color,
+        absolutechange_growth_color=absolutechange_growth_color,
+        absolutechange_decline_color=absolutechange_decline_color,
+        absolutechange_no_change_color=absolutechange_no_change_color,
     )
 
 

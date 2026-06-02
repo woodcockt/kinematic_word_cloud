@@ -7,11 +7,13 @@ from typing import Mapping
 
 from PIL import Image, ImageDraw, ImageFont
 
+from .change_color import color_for_absolute_change
 from .config import DEFAULT_CANVAS_SIZE
 from .data import KeyframeTable
 from .effects import BloomConfig, render_word_bloom
 from .labels import LabelConfig, label_for_frame, render_label_overlay
 from .layout import (
+    ABSOLUTECHANGE_COLOR_BY,
     CloudLayout,
     ColorOptions,
     build_layout_from_frequencies,
@@ -62,6 +64,9 @@ def render_fixed_frame(
     label_text: str | None = None,
     label_config: LabelConfig | None = None,
     bloom_config: BloomConfig | None = None,
+    change_start_values: Mapping[str, float] | None = None,
+    change_end_values: Mapping[str, float] | None = None,
+    color_options: ColorOptions | None = None,
 ) -> Image.Image:
     """Render one fixed-position frame with size scaled by current values."""
 
@@ -93,12 +98,27 @@ def render_fixed_frame(
         scale = current_value / peak_value
         scaled_font_size = word_layout.font_size * scale
         font_size = max(min_font_size, int(round(scaled_font_size)))
+        word_color = (
+            color_for_absolute_change(
+                word_layout.word,
+                change_start_values or {},
+                change_end_values or {},
+                growth_color=color_options.absolutechange_growth_color,
+                decline_color=color_options.absolutechange_decline_color,
+                no_change_color=color_options.absolutechange_no_change_color,
+            )
+            if (
+                color_options is not None
+                and color_options.color_by == ABSOLUTECHANGE_COLOR_BY
+            )
+            else word_layout.color
+        )
         current_image = _render_word_image(
             word_layout.word,
             font_path=font_path,
             font_size=font_size,
             orientation=word_layout.orientation,
-            color=word_layout.color,
+            color=word_color,
         )
 
         center_x, center_y = (
@@ -206,6 +226,10 @@ def render_fixed_animation_frames(
         else None
     )
     peak_values = table.peak_values()
+    color_by_absolutechange = (
+        color_options is not None
+        and color_options.color_by == ABSOLUTECHANGE_COLOR_BY
+    )
 
     for frame in iter_timeline_frames(
         table,
@@ -216,6 +240,16 @@ def render_fixed_animation_frames(
         centers = (
             simulator.step(frame.values, peak_values)
             if simulator is not None
+            else None
+        )
+        change_start_values = (
+            table.frame_values(frame.start_keyframe)
+            if color_by_absolutechange
+            else None
+        )
+        change_end_values = (
+            table.frame_values(frame.end_keyframe)
+            if color_by_absolutechange
             else None
         )
         render_fixed_frame(
@@ -229,6 +263,9 @@ def render_fixed_animation_frames(
             label_text=label_for_frame(frame, label_config),
             label_config=label_config,
             bloom_config=bloom_config,
+            change_start_values=change_start_values,
+            change_end_values=change_end_values,
+            color_options=color_options,
         )
         frame_paths.append(frame_path)
 

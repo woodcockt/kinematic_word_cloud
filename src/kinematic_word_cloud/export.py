@@ -8,10 +8,11 @@ import subprocess
 
 from PIL import Image
 
+from .change_color import color_for_absolute_change
 from .config import DEFAULT_CANVAS_SIZE
 from .data import KeyframeTable
 from .labels import LabelConfig, sample_labels, svg_label_position
-from .layout import ColorOptions, build_peak_layout
+from .layout import ABSOLUTECHANGE_COLOR_BY, ColorOptions, build_peak_layout
 from .physics import PhysicsConfig
 from .render import (
     _build_anchor_layout,
@@ -24,6 +25,10 @@ from .timeline import DEFAULT_INTERPOLATION, iter_timeline_frames
 
 class ExportError(RuntimeError):
     """Raised when animation export fails."""
+
+
+SvgWordSample = dict[str, float | str]
+SvgFrameSample = dict[str, SvgWordSample]
 
 
 def export_gif(
@@ -225,7 +230,7 @@ def _sample_svg_frames(
     physics_config: PhysicsConfig | None,
     interpolation: str,
     color_options: ColorOptions | None,
-) -> list[dict[str, dict[str, float]]]:
+) -> list[SvgFrameSample]:
     font_path = getattr(layout.wordcloud, "font_path")
     peak_sizes = _measure_peak_sizes(layout, font_path=font_path)
     fixed_centers = _layout_centers(layout, peak_sizes)
@@ -248,7 +253,11 @@ def _sample_svg_frames(
         )
 
     peak_values = table.peak_values()
-    samples: list[dict[str, dict[str, float]]] = []
+    color_by_absolutechange = (
+        color_options is not None
+        and color_options.color_by == ABSOLUTECHANGE_COLOR_BY
+    )
+    samples: list[SvgFrameSample] = []
     for frame in iter_timeline_frames(
         table,
         frames_per_transition=frames_per_transition,
@@ -259,7 +268,17 @@ def _sample_svg_frames(
             if simulator is not None
             else fixed_centers
         )
-        frame_sample: dict[str, dict[str, float]] = {}
+        change_start_values = (
+            table.frame_values(frame.start_keyframe)
+            if color_by_absolutechange
+            else {}
+        )
+        change_end_values = (
+            table.frame_values(frame.end_keyframe)
+            if color_by_absolutechange
+            else {}
+        )
+        frame_sample: SvgFrameSample = {}
         for word_layout in layout.words:
             peak_value = peak_values.get(word_layout.word, 0.0)
             current_value = float(frame.values.get(word_layout.word, 0.0))
@@ -276,6 +295,18 @@ def _sample_svg_frames(
                 "y": center_y,
                 "font_size": font_size,
                 "opacity": opacity,
+                "color": (
+                    color_for_absolute_change(
+                        word_layout.word,
+                        change_start_values,
+                        change_end_values,
+                        growth_color=color_options.absolutechange_growth_color,
+                        decline_color=color_options.absolutechange_decline_color,
+                        no_change_color=color_options.absolutechange_no_change_color,
+                    )
+                    if color_by_absolutechange and color_options is not None
+                    else word_layout.color
+                ),
             }
         samples.append(frame_sample)
 
@@ -285,7 +316,7 @@ def _sample_svg_frames(
 def _build_svg_document(
     layout,
     *,
-    samples: list[dict[str, dict[str, float]]],
+    samples: list[SvgFrameSample],
     width: int,
     height: int,
     background_color: str,
@@ -324,7 +355,7 @@ def _build_svg_document(
                 (
                     f'      <text x="0" y="0" '
                     f'font-size="{_fmt(first["font_size"])}" '
-                    f'fill="{escape(word_layout.color)}" '
+                    f'fill="{escape(str(first["color"]))}" '
                     f'opacity="{_fmt(first["opacity"])}"{transform}>'
                 ),
                 _animate_line(
@@ -340,6 +371,14 @@ def _build_svg_document(
                     duration,
                     key_times,
                     repeat_count,
+                ),
+                _animate_color_line(
+                    "fill",
+                    _sample_color_values(samples, word),
+                    duration,
+                    key_times,
+                    repeat_count,
+                    calc_mode="discrete",
                 ),
                 f"        {escape(word)}",
                 "      </text>",
@@ -373,6 +412,24 @@ def _animate_line(
     calc_mode: str | None = None,
 ) -> str:
     values_text = ";".join(_fmt(value) for value in values)
+    calc_mode_text = f' calcMode="{escape(calc_mode)}"' if calc_mode else ""
+    return (
+        f'      <animate attributeName="{attribute}" values="{values_text}" '
+        f'keyTimes="{key_times}" dur="{_fmt(duration)}s" '
+        f'repeatCount="{escape(repeat_count)}"{calc_mode_text} />'
+    )
+
+
+def _animate_color_line(
+    attribute: str,
+    values: list[str],
+    duration: float,
+    key_times: str,
+    repeat_count: str,
+    *,
+    calc_mode: str | None = None,
+) -> str:
+    values_text = ";".join(escape(value) for value in values)
     calc_mode_text = f' calcMode="{escape(calc_mode)}"' if calc_mode else ""
     return (
         f'      <animate attributeName="{attribute}" values="{values_text}" '
@@ -454,18 +511,28 @@ def _animate_transform_line(
 
 
 def _translate_values(
-    samples: list[dict[str, dict[str, float]]],
+    samples: list[SvgFrameSample],
     word: str,
 ) -> list[tuple[float, float]]:
-    return [(sample[word]["x"], sample[word]["y"]) for sample in samples]
+    return [
+        (float(sample[word]["x"]), float(sample[word]["y"]))
+        for sample in samples
+    ]
 
 
 def _sample_values(
-    samples: list[dict[str, dict[str, float]]],
+    samples: list[SvgFrameSample],
     word: str,
     field: str,
 ) -> list[float]:
-    return [sample[word][field] for sample in samples]
+    return [float(sample[word][field]) for sample in samples]
+
+
+def _sample_color_values(
+    samples: list[SvgFrameSample],
+    word: str,
+) -> list[str]:
+    return [str(sample[word]["color"]) for sample in samples]
 
 
 def _svg_key_times(sample_count: int) -> str:

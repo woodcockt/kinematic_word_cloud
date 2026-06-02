@@ -10,6 +10,11 @@ try:
 except ImportError:  # pragma: no cover - exercised when optional dep is missing.
     WordCloud = None
 
+from .change_color import (
+    DEFAULT_ABSOLUTECHANGE_DECLINE_COLOR,
+    DEFAULT_ABSOLUTECHANGE_GROWTH_COLOR,
+    DEFAULT_ABSOLUTECHANGE_NO_CHANGE_COLOR,
+)
 from .config import DEFAULT_CANVAS_SIZE
 from .data import KeyframeTable
 
@@ -52,7 +57,13 @@ COLOR_PALETTES: dict[str, tuple[str, ...]] = {
 }
 DEFAULT_PALETTE_NAME = "default"
 DEFAULT_COLOR_BY = "group"
-COLOR_BY_MODES: tuple[str, ...] = ("group", "word", "single")
+ABSOLUTECHANGE_COLOR_BY = "absolutechange"
+COLOR_BY_MODES: tuple[str, ...] = (
+    "group",
+    "word",
+    "single",
+    ABSOLUTECHANGE_COLOR_BY,
+)
 DEFAULT_FALLBACK_COLOR = "#222222"
 
 
@@ -64,6 +75,9 @@ class ColorOptions:
     color_by: str = DEFAULT_COLOR_BY
     group_colors: Mapping[str, str] | None = None
     default_color: str = DEFAULT_FALLBACK_COLOR
+    absolutechange_growth_color: str = DEFAULT_ABSOLUTECHANGE_GROWTH_COLOR
+    absolutechange_decline_color: str = DEFAULT_ABSOLUTECHANGE_DECLINE_COLOR
+    absolutechange_no_change_color: str = DEFAULT_ABSOLUTECHANGE_NO_CHANGE_COLOR
 
 
 @dataclass(frozen=True)
@@ -186,7 +200,10 @@ def build_color_func(
     1. explicit word color,
     2. configured or deterministic group color when color_by="group",
     3. deterministic fallback color by word when color_by="group" or "word",
-    4. neutral default color when color_by="single".
+    4. neutral default color when color_by="single" or "absolutechange".
+
+    The animated renderer overrides these layout colors frame-by-frame when
+    color_by="absolutechange".
     """
 
     options = color_options or ColorOptions(palette=color_palette)
