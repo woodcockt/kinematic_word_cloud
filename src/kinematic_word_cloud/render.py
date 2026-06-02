@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 from typing import Mapping
 
@@ -73,6 +74,8 @@ def render_fixed_frame(
     change_end_values: Mapping[str, float] | None = None,
     color_options: ColorOptions | None = None,
     scaledchange_max_absolute_change: float = 0.0,
+    size_reference_values: Mapping[str, float] | None = None,
+    size_max_value: float | None = None,
 ) -> Image.Image:
     """Render one fixed-position frame with size scaled by current values."""
 
@@ -91,12 +94,14 @@ def render_fixed_frame(
         else None
     )
     font_path = getattr(wordcloud, "font_path")
-    peak_values = table.peak_values()
+    peak_values = size_reference_values or table.peak_values()
     peak_sizes = _measure_peak_sizes(layout, font_path=font_path)
     layout_centers = _layout_centers(layout, peak_sizes)
 
     for word_layout in layout.words:
         current_value = float(values.get(word_layout.word, 0.0))
+        if size_max_value is not None:
+            current_value = min(current_value, size_max_value)
         peak_value = peak_values.get(word_layout.word, 0.0)
         if current_value <= 0 or peak_value <= 0:
             continue
@@ -194,10 +199,11 @@ def render_fixed_animation_frames(
     interpolation: str = DEFAULT_INTERPOLATION,
     color_options: ColorOptions | None = None,
     bloom_config: BloomConfig | None = None,
+    size_max_value: float | None = None,
 ) -> list[Path]:
     """Render PNG frames for the whole keyframe timeline."""
 
-    layout = build_peak_layout(
+    layout, size_reference_values = _build_size_reference_layout(
         table,
         width=width,
         height=height,
@@ -205,6 +211,7 @@ def render_fixed_animation_frames(
         random_state=random_state,
         colormap=colormap,
         color_options=color_options,
+        size_max_value=size_max_value,
     )
     output = Path(output_dir)
     output.mkdir(parents=True, exist_ok=True)
@@ -220,6 +227,8 @@ def render_fixed_animation_frames(
             random_state=random_state,
             colormap=colormap,
             color_options=color_options,
+            size_reference_values=size_reference_values,
+            size_max_value=size_max_value,
         )
         if use_physics
         else None
@@ -234,7 +243,6 @@ def render_fixed_animation_frames(
         if use_physics
         else None
     )
-    peak_values = table.peak_values()
     color_by_absolutechange = (
         color_options is not None
         and color_options.color_by == ABSOLUTECHANGE_COLOR_BY
@@ -256,8 +264,9 @@ def render_fixed_animation_frames(
         interpolation=interpolation,
     ):
         frame_path = output / f"frame_{frame.index:04d}.png"
+        physics_values = _clamp_values_to_size_max(frame.values, size_max_value)
         centers = (
-            simulator.step(frame.values, peak_values)
+            simulator.step(physics_values, size_reference_values)
             if simulator is not None
             else None
         )
@@ -286,6 +295,8 @@ def render_fixed_animation_frames(
             change_end_values=change_end_values,
             color_options=color_options,
             scaledchange_max_absolute_change=scaledchange_max_absolute_change,
+            size_reference_values=size_reference_values,
+            size_max_value=size_max_value,
         )
         frame_paths.append(frame_path)
 
@@ -297,6 +308,113 @@ def _clear_animation_frames(output_dir: Path) -> None:
         frame_path.unlink(missing_ok=True)
 
 
+def _build_size_reference_layout(
+    table: KeyframeTable,
+    *,
+    width: int,
+    height: int,
+    background_color: str,
+    random_state: int,
+    colormap: str,
+    color_options: ColorOptions | None,
+    size_max_value: float | None,
+) -> tuple[CloudLayout, dict[str, float]]:
+    size_reference_values = _size_reference_values(table, size_max_value)
+    layout = build_layout_from_frequencies(
+        size_reference_values,
+        explicit_colors=table.word_colors or {},
+        word_groups=table.word_groups or {},
+        width=width,
+        height=height,
+        background_color=background_color,
+        random_state=random_state,
+        colormap=colormap,
+        color_options=color_options,
+    )
+    return (
+        _scale_layout_font_sizes(
+            layout,
+            _layout_font_scale(size_reference_values, size_max_value),
+        ),
+        size_reference_values,
+    )
+
+
+def _size_reference_values(
+    table: KeyframeTable,
+    size_max_value: float | None,
+) -> dict[str, float]:
+    peak_values = table.peak_values()
+    if size_max_value is None:
+        return peak_values
+
+    return {
+        word: min(value, size_max_value) if value > 0 else 0.0
+        for word, value in peak_values.items()
+    }
+
+
+def _layout_font_scale(
+    size_reference_values: Mapping[str, float],
+    size_max_value: float | None,
+) -> float:
+    if size_max_value is None:
+        return 1.0
+
+    max_reference = max(size_reference_values.values(), default=0.0)
+    if max_reference <= 0:
+        return 1.0
+    return min(max_reference / size_max_value, 1.0)
+
+
+def _scale_layout_font_sizes(layout: CloudLayout, scale: float) -> CloudLayout:
+    if scale >= 1.0:
+        return layout
+
+    font_path = getattr(layout.wordcloud, "font_path")
+    scaled_words = []
+    for word_layout in layout.words:
+        old_width, old_height = _measure_word(
+            word_layout.word,
+            font_path=font_path,
+            font_size=word_layout.font_size,
+            orientation=word_layout.orientation,
+        )
+        scaled_font_size = max(1, int(round(word_layout.font_size * scale)))
+        new_width, new_height = _measure_word(
+            word_layout.word,
+            font_path=font_path,
+            font_size=scaled_font_size,
+            orientation=word_layout.orientation,
+        )
+        top, left = word_layout.position
+        scaled_words.append(
+            replace(
+                word_layout,
+                font_size=scaled_font_size,
+                position=(
+                    int(round(top + (old_height - new_height) / 2.0)),
+                    int(round(left + (old_width - new_width) / 2.0)),
+                ),
+            )
+        )
+
+    return replace(layout, words=tuple(scaled_words))
+
+
+def _clamp_values_to_size_max(
+    values: Mapping[str, float],
+    size_max_value: float | None,
+) -> Mapping[str, float]:
+    if size_max_value is None:
+        return values
+
+    return {
+        word: min(float(value), size_max_value)
+        for word, value in values.items()
+    }
+
+
 def _build_anchor_layout(
     table: KeyframeTable,
     *,
@@ -306,9 +424,17 @@ def _build_anchor_layout(
     random_state: int,
     colormap: str,
     color_options: ColorOptions | None,
+    size_reference_values: Mapping[str, float],
+    size_max_value: float | None,
 ) -> CloudLayout:
-    return build_layout_from_frequencies(
-        table.frame_values(table.frames[0]),
+    anchor_values = table.frame_values(table.frames[0])
+    if not any(value > 0 for value in anchor_values.values()):
+        anchor_values = dict(size_reference_values)
+    else:
+        anchor_values = dict(_clamp_values_to_size_max(anchor_values, size_max_value))
+
+    layout = build_layout_from_frequencies(
+        anchor_values,
         explicit_colors=table.word_colors or {},
         word_groups=table.word_groups or {},
         width=width,
@@ -317,6 +443,10 @@ def _build_anchor_layout(
         random_state=random_state,
         colormap=colormap,
         color_options=color_options,
+    )
+    return _scale_layout_font_sizes(
+        layout,
+        _layout_font_scale(anchor_values, size_max_value),
     )
 
 

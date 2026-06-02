@@ -222,6 +222,18 @@ Render with a different input CSV:
 python3 scripts/render_animation.py --input examples/bioit_top_terms_2016_2026.csv
 ```
 
+Keep segment renders on a shared value scale:
+
+```bash
+python3 scripts/render_animation.py --size-max-value 1.0
+```
+
+By default, each CSV is sized relative to its own largest value. Use
+`--size-max-value` when a local peak should stay smaller than a later global
+peak, such as rendering a song section where values top out at `0.75` but a
+later section will reach `1.0`. Values above the max are capped for sizing and
+physics calculations. In TOML, use `size_max_value = 1.0`.
+
 Use a TOML config file instead of repeating CLI parameters:
 
 ```bash

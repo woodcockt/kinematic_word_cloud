@@ -43,6 +43,7 @@ from kinematic_word_cloud.render_config import (
     resolve_export_paths,
     resolve_interpolation,
     resolve_project_path,
+    resolve_size_max_value,
     resolve_timing_values,
     setting,
 )
@@ -224,6 +225,15 @@ def main() -> None:
         help="Value interpolation curve between adjacent keyframes.",
     )
     parser.add_argument(
+        "--size-max-value",
+        type=float,
+        default=argparse.SUPPRESS,
+        help=(
+            "Input value that maps to maximum word size. Useful when rendering "
+            "segments whose local peaks should stay below a later global max."
+        ),
+    )
+    parser.add_argument(
         "--palette",
         choices=tuple(COLOR_PALETTES),
         default=argparse.SUPPRESS,
@@ -364,6 +374,7 @@ def main() -> None:
             project_root=PROJECT_ROOT,
         )
         bloom_config = build_bloom_config(args, config)
+        size_max_value = resolve_size_max_value(args, config)
         export_formats = resolve_export_formats(args, config)
     except KeyframeDataError as exc:
         parser.error(str(exc))
@@ -398,12 +409,15 @@ def main() -> None:
         interpolation=interpolation,
         color_options=color_options,
         bloom_config=bloom_config,
+        size_max_value=size_max_value,
     )
     relative_output_dir = display_path(output_dir, project_root=PROJECT_ROOT)
     print(f"Wrote {len(frame_paths)} frames to {relative_output_dir}")
     print(f"Canvas: {canvas_size.width}x{canvas_size.height} ({aspect})")
     print(f"Background: {background_color}")
     print(f"Interpolation: {interpolation}")
+    if size_max_value is not None:
+        print(f"Size max value: {size_max_value:g}")
     print(f"Color by: {color_options.color_by}")
     if color_options.color_by == ABSOLUTECHANGE_COLOR_BY:
         print(
@@ -480,6 +494,7 @@ def main() -> None:
             label_config=label_config,
             interpolation=interpolation,
             color_options=color_options,
+            size_max_value=size_max_value,
         )
         print(f"Wrote {display_path(svg_path, project_root=PROJECT_ROOT)}")
 
