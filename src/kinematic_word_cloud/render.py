@@ -9,6 +9,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 from .config import DEFAULT_CANVAS_SIZE
 from .data import KeyframeTable
+from .effects import BloomConfig, render_word_bloom
 from .labels import LabelConfig, label_for_frame, render_label_overlay
 from .layout import (
     CloudLayout,
@@ -60,19 +61,23 @@ def render_fixed_frame(
     centers: Mapping[str, tuple[float, float]] | None = None,
     label_text: str | None = None,
     label_config: LabelConfig | None = None,
+    bloom_config: BloomConfig | None = None,
 ) -> Image.Image:
     """Render one fixed-position frame with size scaled by current values."""
 
     wordcloud = layout.wordcloud
+    image_mode = getattr(wordcloud, "mode", "RGB")
     background = (
         background_color
         if background_color is not None
         else getattr(wordcloud, "background_color", "white")
     )
-    image = Image.new(
-        getattr(wordcloud, "mode", "RGB"),
-        (layout.width, layout.height),
-        background,
+    image = Image.new("RGBA", (layout.width, layout.height), background)
+    word_layer = Image.new("RGBA", image.size, (255, 255, 255, 0))
+    bloom_layer = (
+        Image.new("RGBA", image.size, (255, 255, 255, 0))
+        if bloom_config is not None
+        else None
     )
     font_path = getattr(wordcloud, "font_path")
     peak_values = table.peak_values()
@@ -86,7 +91,8 @@ def render_fixed_frame(
             continue
 
         scale = current_value / peak_value
-        font_size = max(min_font_size, int(round(word_layout.font_size * scale)))
+        scaled_font_size = word_layout.font_size * scale
+        font_size = max(min_font_size, int(round(scaled_font_size)))
         current_image = _render_word_image(
             word_layout.word,
             font_path=font_path,
@@ -102,7 +108,31 @@ def render_fixed_frame(
         )
         paste_x = int(round(center_x - current_image.width / 2))
         paste_y = int(round(center_y - current_image.height / 2))
-        image.paste(current_image, (paste_x, paste_y), current_image)
+        if bloom_layer is not None:
+            radius = bloom_config.radius_for_font_size(
+                max(float(min_font_size), scaled_font_size)
+            )
+            peak_radius = bloom_config.radius_for_font_size(word_layout.font_size)
+            strength = bloom_config.strength_for_radius(radius, peak_radius)
+            bloom_image, padding = render_word_bloom(
+                current_image,
+                radius=radius,
+                strength=strength,
+                layers=bloom_config.layers,
+                color=bloom_config.color,
+                source=bloom_config.source,
+                edge_width=bloom_config.edge_width,
+            )
+            bloom_layer.paste(
+                bloom_image,
+                (paste_x - padding, paste_y - padding),
+                bloom_image,
+            )
+        word_layer.paste(current_image, (paste_x, paste_y), current_image)
+
+    if bloom_layer is not None:
+        image = Image.alpha_composite(image, bloom_layer)
+    image = Image.alpha_composite(image, word_layer)
 
     render_label_overlay(
         image,
@@ -113,8 +143,9 @@ def render_fixed_frame(
 
     output = Path(output_path)
     output.parent.mkdir(parents=True, exist_ok=True)
-    image.save(output)
-    return image
+    output_image = image if image_mode == "RGBA" else image.convert(image_mode)
+    output_image.save(output)
+    return output_image
 
 
 def render_fixed_animation_frames(
@@ -133,6 +164,7 @@ def render_fixed_animation_frames(
     label_config: LabelConfig | None = None,
     interpolation: str = DEFAULT_INTERPOLATION,
     color_options: ColorOptions | None = None,
+    bloom_config: BloomConfig | None = None,
 ) -> list[Path]:
     """Render PNG frames for the whole keyframe timeline."""
 
@@ -196,6 +228,7 @@ def render_fixed_animation_frames(
             centers=centers,
             label_text=label_for_frame(frame, label_config),
             label_config=label_config,
+            bloom_config=bloom_config,
         )
         frame_paths.append(frame_path)
 

@@ -167,6 +167,55 @@ python3 scripts/render_animation.py --background-color '#111111'
 
 In TOML, use `background_color = "#111111"`.
 
+Add a per-word raster bloom effect:
+
+```bash
+python3 scripts/render_animation.py --exports gif mp4 --background-color '#111111' --bloom
+```
+
+Bloom radius scales with each word's current animated font size, so growing
+words develop a larger glow and shrinking words fade back to a smaller halo.
+Tune the effect with `--bloom-radius-scale`, `--bloom-min-radius`,
+`--bloom-max-radius`, `--bloom-strength`, `--bloom-color`,
+`--bloom-source`, `--bloom-edge-width`, `--bloom-intensity-mode`,
+`--bloom-intensity-power`, and `--bloom-layers`. By default, bloom is generated
+from a stable 1px edge mask so the glow follows letter outlines instead of
+blurring the full filled letter shapes. The blur radius is calculated from the
+word's continuous animated size, which helps avoid visible pulsing between
+integer font sizes. Bloom strength is also scaled by absolute current word size,
+so words at the same rendered size get the same glow strength and smaller words
+do not get full-power halos just because they are at their own peak. Use
+`--bloom-intensity-mode relative` to scale strength by each word's current size
+relative to its peak, or `--bloom-intensity-mode constant` to keep constant
+bloom strength. Use `--bloom-source fill` for the older filled blur style. Each
+word blooms in its own color by default; use `--bloom-color word` to make that
+explicit. Use `--bloom-color white` for a brighter white halo behind colored
+words:
+
+```bash
+python3 scripts/render_animation.py --exports gif mp4 --background-color '#111111' --bloom --bloom-color white
+```
+
+In TOML, use either `bloom = true` for defaults or a `[bloom]` table:
+
+```toml
+[bloom]
+enabled = true
+radius_scale = 0.08
+min_radius = 1.5
+max_radius = 18
+strength = 2.0
+color = "word"
+source = "edge"
+edge_width = 2
+intensity_mode = "absolute"
+intensity_power = 1.0
+layers = 2
+```
+
+Bloom is currently applied to generated PNG frames, GIF, and MP4 output. SVG
+export ignores the bloom settings for now.
+
 Render with a different input CSV:
 
 ```bash

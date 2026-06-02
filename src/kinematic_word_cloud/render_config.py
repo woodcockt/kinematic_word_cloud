@@ -5,7 +5,10 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Mapping
 
+from PIL import ImageColor
+
 from .data import HEX_COLOR_PATTERN, KeyframeDataError
+from .effects import BLOOM_INTENSITY_MODES, BLOOM_SOURCES, BloomConfig
 from .labels import LABEL_MODES, LABEL_POSITIONS, LabelConfig
 from .layout import (
     COLOR_BY_MODES,
@@ -218,6 +221,188 @@ def resolve_color_options(
     )
 
 
+def build_bloom_config(
+    cli_values: object,
+    config: Mapping[str, Any],
+) -> BloomConfig | None:
+    """Resolve optional raster bloom configuration."""
+
+    bloom_table = _bloom_table(config)
+    enabled = optional_bool(
+        _bloom_setting(
+            cli_values,
+            config,
+            bloom_table,
+            cli_key="bloom",
+            table_key="enabled",
+            top_level_key="bloom",
+            default=False,
+        ),
+        "bloom",
+    )
+    if not enabled:
+        return None
+
+    defaults = BloomConfig()
+    radius_scale = optional_float(
+        _bloom_setting(
+            cli_values,
+            config,
+            bloom_table,
+            cli_key="bloom_radius_scale",
+            table_key="radius_scale",
+            top_level_key="bloom_radius_scale",
+            default=defaults.radius_scale,
+        ),
+        "bloom_radius_scale",
+    )
+    min_radius = optional_float(
+        _bloom_setting(
+            cli_values,
+            config,
+            bloom_table,
+            cli_key="bloom_min_radius",
+            table_key="min_radius",
+            top_level_key="bloom_min_radius",
+            default=defaults.min_radius,
+        ),
+        "bloom_min_radius",
+    )
+    max_radius = optional_float(
+        _bloom_setting(
+            cli_values,
+            config,
+            bloom_table,
+            cli_key="bloom_max_radius",
+            table_key="max_radius",
+            top_level_key="bloom_max_radius",
+            default=defaults.max_radius,
+        ),
+        "bloom_max_radius",
+    )
+    strength = optional_float(
+        _bloom_setting(
+            cli_values,
+            config,
+            bloom_table,
+            cli_key="bloom_strength",
+            table_key="strength",
+            top_level_key="bloom_strength",
+            default=defaults.strength,
+        ),
+        "bloom_strength",
+    )
+    layers = optional_int(
+        _bloom_setting(
+            cli_values,
+            config,
+            bloom_table,
+            cli_key="bloom_layers",
+            table_key="layers",
+            top_level_key="bloom_layers",
+            default=defaults.layers,
+        ),
+        "bloom_layers",
+    )
+    color = optional_color(
+        _bloom_setting(
+            cli_values,
+            config,
+            bloom_table,
+            cli_key="bloom_color",
+            table_key="color",
+            top_level_key="bloom_color",
+            default=defaults.color,
+        ),
+        "bloom_color",
+    )
+    source = str(
+        _bloom_setting(
+            cli_values,
+            config,
+            bloom_table,
+            cli_key="bloom_source",
+            table_key="source",
+            top_level_key="bloom_source",
+            default=defaults.source,
+        )
+    )
+    edge_width = optional_int(
+        _bloom_setting(
+            cli_values,
+            config,
+            bloom_table,
+            cli_key="bloom_edge_width",
+            table_key="edge_width",
+            top_level_key="bloom_edge_width",
+            default=defaults.edge_width,
+        ),
+        "bloom_edge_width",
+    )
+    intensity_power = optional_float(
+        _bloom_setting(
+            cli_values,
+            config,
+            bloom_table,
+            cli_key="bloom_intensity_power",
+            table_key="intensity_power",
+            top_level_key="bloom_intensity_power",
+            default=defaults.intensity_power,
+        ),
+        "bloom_intensity_power",
+    )
+    intensity_mode = str(
+        _bloom_setting(
+            cli_values,
+            config,
+            bloom_table,
+            cli_key="bloom_intensity_mode",
+            table_key="intensity_mode",
+            top_level_key="bloom_intensity_mode",
+            default=defaults.intensity_mode,
+        )
+    )
+
+    if radius_scale is None or radius_scale < 0:
+        raise KeyframeDataError("bloom_radius_scale must be non-negative.")
+    if min_radius is None or min_radius < 0:
+        raise KeyframeDataError("bloom_min_radius must be non-negative.")
+    if max_radius is None or max_radius < min_radius:
+        raise KeyframeDataError(
+            "bloom_max_radius must be greater than or equal to bloom_min_radius."
+        )
+    if strength is None or strength < 0:
+        raise KeyframeDataError("bloom_strength must be non-negative.")
+    if layers is None or layers < 1:
+        raise KeyframeDataError("bloom_layers must be at least 1.")
+    if source not in BLOOM_SOURCES:
+        raise KeyframeDataError(
+            "bloom_source must be one of: " + ", ".join(BLOOM_SOURCES)
+        )
+    if edge_width is None or edge_width < 1:
+        raise KeyframeDataError("bloom_edge_width must be at least 1.")
+    if intensity_power is None or intensity_power < 0:
+        raise KeyframeDataError("bloom_intensity_power must be non-negative.")
+    if intensity_mode not in BLOOM_INTENSITY_MODES:
+        raise KeyframeDataError(
+            "bloom_intensity_mode must be one of: "
+            + ", ".join(BLOOM_INTENSITY_MODES)
+        )
+
+    return BloomConfig(
+        radius_scale=radius_scale,
+        min_radius=min_radius,
+        max_radius=max_radius,
+        strength=strength,
+        layers=layers,
+        color=color,
+        source=source,
+        edge_width=edge_width,
+        intensity_mode=intensity_mode,
+        intensity_power=intensity_power,
+    )
+
+
 def resolve_export_formats(
     cli_values: object,
     config: Mapping[str, Any],
@@ -317,6 +502,51 @@ def optional_bool(value: Any, name: str) -> bool:
             return False
 
     raise KeyframeDataError(f"{name} must be true or false.")
+
+
+def optional_color(value: Any, name: str) -> str | None:
+    """Validate an optional Pillow color value."""
+
+    if value is None:
+        return None
+    text = str(value).strip()
+    if text.lower() == "word":
+        return None
+    try:
+        ImageColor.getrgb(text)
+    except ValueError as exc:
+        raise KeyframeDataError(
+            f"{name} must be 'word' or a valid Pillow color."
+        ) from exc
+    return text
+
+
+def _bloom_table(config: Mapping[str, Any]) -> Mapping[str, Any]:
+    value = config.get("bloom", {})
+    if isinstance(value, Mapping):
+        return value
+    if isinstance(value, bool) or "bloom" not in config:
+        return {}
+    raise KeyframeDataError("Config key 'bloom' must be true, false, or a table.")
+
+
+def _bloom_setting(
+    cli_values: object,
+    config: Mapping[str, Any],
+    bloom_table: Mapping[str, Any],
+    *,
+    cli_key: str,
+    table_key: str,
+    top_level_key: str,
+    default: Any,
+) -> Any:
+    if hasattr(cli_values, cli_key):
+        return getattr(cli_values, cli_key)
+    if table_key in bloom_table:
+        return bloom_table[table_key]
+    if top_level_key in config and not isinstance(config[top_level_key], Mapping):
+        return config[top_level_key]
+    return default
 
 
 def _parse_cli_exports(values: Any) -> set[str]:
