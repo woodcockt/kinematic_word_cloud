@@ -81,6 +81,40 @@ def setting(
             if alias in label_config:
                 return label_config[alias]
 
+    absolutechange_config = config.get("absolutechange")
+    if key.startswith("absolutechange_") and isinstance(
+        absolutechange_config,
+        Mapping,
+    ):
+        absolutechange_key = key.removeprefix("absolutechange_")
+        absolutechange_aliases = {
+            "growth_color": ("growth_color", "growth"),
+            "decline_color": ("decline_color", "decline", "reduction"),
+            "no_change_color": ("no_change_color", "no_change", "neutral"),
+        }
+        for alias in absolutechange_aliases.get(
+            absolutechange_key,
+            (absolutechange_key,),
+        ):
+            if alias in absolutechange_config:
+                return absolutechange_config[alias]
+
+    scaledchange_config = config.get("scaledchange")
+    if key.startswith("scaledchange_") and isinstance(
+        scaledchange_config,
+        Mapping,
+    ):
+        scaledchange_key = key.removeprefix("scaledchange_")
+        scaledchange_aliases = {
+            "colors": ("colors", "palette"),
+        }
+        for alias in scaledchange_aliases.get(
+            scaledchange_key,
+            (scaledchange_key,),
+        ):
+            if alias in scaledchange_config:
+                return scaledchange_config[alias]
+
     return default
 
 
@@ -205,9 +239,46 @@ def resolve_color_options(
             "color_by must be one of: " + ", ".join(COLOR_BY_MODES)
         )
 
+    color_defaults = ColorOptions()
     default_color = _normalize_hex_color(
         setting(cli_values, config, "default_color", DEFAULT_FALLBACK_COLOR),
         "default_color",
+    )
+    absolutechange_growth_color = _normalize_hex_color(
+        setting(
+            cli_values,
+            config,
+            "absolutechange_growth_color",
+            color_defaults.absolutechange_growth_color,
+        ),
+        "absolutechange_growth_color",
+    )
+    absolutechange_decline_color = _normalize_hex_color(
+        setting(
+            cli_values,
+            config,
+            "absolutechange_decline_color",
+            color_defaults.absolutechange_decline_color,
+        ),
+        "absolutechange_decline_color",
+    )
+    absolutechange_no_change_color = _normalize_hex_color(
+        setting(
+            cli_values,
+            config,
+            "absolutechange_no_change_color",
+            color_defaults.absolutechange_no_change_color,
+        ),
+        "absolutechange_no_change_color",
+    )
+    scaledchange_colors = _parse_color_stops(
+        setting(
+            cli_values,
+            config,
+            "scaledchange_colors",
+            color_defaults.scaledchange_colors,
+        ),
+        "scaledchange_colors",
     )
     group_colors = _parse_config_group_colors(config.get("group_colors", {}))
     if hasattr(cli_values, "group_color"):
@@ -218,6 +289,10 @@ def resolve_color_options(
         color_by=color_by,
         group_colors=group_colors,
         default_color=default_color,
+        absolutechange_growth_color=absolutechange_growth_color,
+        absolutechange_decline_color=absolutechange_decline_color,
+        absolutechange_no_change_color=absolutechange_no_change_color,
+        scaledchange_colors=scaledchange_colors,
     )
 
 
@@ -634,6 +709,33 @@ def _parse_cli_group_colors(values: Any) -> dict[str, str]:
         group_colors[group] = _normalize_hex_color(color, f"group color for {group}")
 
     return group_colors
+
+
+def _parse_color_stops(value: Any, name: str) -> tuple[str, ...]:
+    if isinstance(value, str):
+        raw_values = _split_color_stop_text(value)
+    elif isinstance(value, (list, tuple)):
+        raw_values = []
+        for item in value:
+            raw_values.extend(_split_color_stop_text(str(item)))
+    else:
+        raise KeyframeDataError(f"{name} must be a list of at least two colors.")
+
+    if len(raw_values) < 2:
+        raise KeyframeDataError(f"{name} must contain at least two colors.")
+
+    return tuple(
+        _normalize_hex_color(color, f"{name}[{index}]")
+        for index, color in enumerate(raw_values)
+    )
+
+
+def _split_color_stop_text(value: str) -> list[str]:
+    return [
+        token.strip()
+        for token in value.replace(",", " ").split()
+        if token.strip()
+    ]
 
 
 def _resolve_palette(
