@@ -16,6 +16,7 @@ InterpolationMode = Literal[
     "rapid10",
     "rapid25",
     "rapid50",
+    "bounce",
     "catmull-rom",
     "monotone-cubic",
 ]
@@ -27,6 +28,7 @@ INTERPOLATION_MODES: tuple[str, ...] = (
     "rapid10",
     "rapid25",
     "rapid50",
+    "bounce",
     "catmull-rom",
     "monotone-cubic",
 )
@@ -36,6 +38,9 @@ RAPID_ACTIVE_FRACTIONS: dict[str, float] = {
     "rapid25": 0.25,
     "rapid50": 0.50,
 }
+BOUNCE_OVERSHOOT = 0.18
+BOUNCE_OVERSHOOT_PHASE = 0.20
+BOUNCE_SETTLE_PHASE = 0.50
 
 
 @dataclass(frozen=True)
@@ -160,6 +165,8 @@ def _build_frame(
         start_values = table.values.iloc[:, start_index]
         end_values = table.values.iloc[:, end_index]
         interpolated = start_values + (end_values - start_values) * interpolated_phase
+        if interpolation == "bounce":
+            interpolated = interpolated.clip(lower=0.0)
 
     return TimelineFrame(
         index=index,
@@ -183,7 +190,22 @@ def _interpolate_phase(phase: float, interpolation: str) -> float:
         return phase
     if interpolation in RAPID_ACTIVE_FRACTIONS:
         return min(1.0, phase / RAPID_ACTIVE_FRACTIONS[interpolation])
+    if interpolation == "bounce":
+        return _bounce_phase(phase)
     return phase * phase * (3.0 - 2.0 * phase)
+
+
+def _bounce_phase(phase: float) -> float:
+    if phase <= BOUNCE_OVERSHOOT_PHASE:
+        return (1.0 + BOUNCE_OVERSHOOT) * phase / BOUNCE_OVERSHOOT_PHASE
+    if phase <= BOUNCE_SETTLE_PHASE:
+        local_phase = (
+            (phase - BOUNCE_OVERSHOOT_PHASE)
+            / (BOUNCE_SETTLE_PHASE - BOUNCE_OVERSHOOT_PHASE)
+        )
+        eased_phase = local_phase * local_phase * (3.0 - 2.0 * local_phase)
+        return (1.0 + BOUNCE_OVERSHOOT) - BOUNCE_OVERSHOOT * eased_phase
+    return 1.0
 
 
 def _catmull_rom_values(
