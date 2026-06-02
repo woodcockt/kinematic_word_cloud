@@ -61,6 +61,7 @@ def setting(
         "total_duration": ("total_duration_seconds", "duration"),
         "seconds_per_transition": ("transition_duration",),
         "frames_per_transition": ("frame_samples",),
+        "size_max_value": ("max_value", "global_max_value"),
     }
     for alias in aliases.get(key, ()):
         if alias in config:
@@ -221,6 +222,21 @@ def resolve_interpolation(
             "interpolation must be one of: " + ", ".join(INTERPOLATION_MODES)
         )
     return interpolation
+
+
+def resolve_size_max_value(
+    cli_values: object,
+    config: Mapping[str, Any],
+) -> float | None:
+    """Resolve the optional global value that maps to maximum word size."""
+
+    size_max_value = optional_float(
+        setting(cli_values, config, "size_max_value", None),
+        "size_max_value",
+    )
+    if size_max_value is not None and size_max_value <= 0:
+        raise KeyframeDataError("size_max_value must be greater than zero.")
+    return size_max_value
 
 
 def resolve_color_options(

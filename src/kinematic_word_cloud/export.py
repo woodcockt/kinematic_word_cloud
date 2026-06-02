@@ -5,6 +5,7 @@ from __future__ import annotations
 from html import escape
 from pathlib import Path
 import subprocess
+from typing import Mapping
 
 from PIL import Image
 
@@ -20,12 +21,13 @@ from .layout import (
     ABSOLUTECHANGE_COLOR_BY,
     ColorOptions,
     SCALEDCHANGE_COLOR_BY,
-    build_peak_layout,
 )
 from .physics import PhysicsConfig
 from .render import (
     _build_anchor_layout,
     _build_physics_simulator,
+    _build_size_reference_layout,
+    _clamp_values_to_size_max,
     _layout_centers,
     _measure_peak_sizes,
 )
@@ -140,13 +142,14 @@ def export_svg(
     interpolation: str = DEFAULT_INTERPOLATION,
     color_options: ColorOptions | None = None,
     repeat_count: str = "indefinite",
+    size_max_value: float | None = None,
 ) -> Path:
     """Export a sampled animated SVG from the keyframe table."""
 
     if fps <= 0:
         raise ExportError("fps must be greater than zero.")
 
-    layout = build_peak_layout(
+    layout, size_reference_values = _build_size_reference_layout(
         table,
         width=width,
         height=height,
@@ -154,10 +157,13 @@ def export_svg(
         random_state=random_state,
         colormap=colormap,
         color_options=color_options,
+        size_max_value=size_max_value,
     )
     samples = _sample_svg_frames(
         table,
         layout=layout,
+        size_reference_values=size_reference_values,
+        size_max_value=size_max_value,
         frames_per_transition=frames_per_transition,
         min_font_size=min_font_size,
         use_physics=use_physics,
@@ -233,6 +239,8 @@ def _sample_svg_frames(
     table: KeyframeTable,
     *,
     layout,
+    size_reference_values: Mapping[str, float],
+    size_max_value: float | None,
     frames_per_transition: int,
     min_font_size: int,
     use_physics: bool,
@@ -253,6 +261,8 @@ def _sample_svg_frames(
             random_state=getattr(layout.wordcloud, "random_state", 42),
             colormap=getattr(layout.wordcloud, "colormap", "viridis"),
             color_options=color_options,
+            size_reference_values=size_reference_values,
+            size_max_value=size_max_value,
         )
         simulator = _build_physics_simulator(
             layout,
@@ -261,7 +271,7 @@ def _sample_svg_frames(
             config=physics_config,
         )
 
-    peak_values = table.peak_values()
+    peak_values = size_reference_values
     color_by_absolutechange = (
         color_options is not None
         and color_options.color_by == ABSOLUTECHANGE_COLOR_BY
@@ -282,8 +292,9 @@ def _sample_svg_frames(
         frames_per_transition=frames_per_transition,
         interpolation=interpolation,
     ):
+        physics_values = _clamp_values_to_size_max(frame.values, size_max_value)
         centers = (
-            simulator.step(frame.values, peak_values)
+            simulator.step(physics_values, peak_values)
             if simulator is not None
             else fixed_centers
         )
@@ -301,6 +312,8 @@ def _sample_svg_frames(
         for word_layout in layout.words:
             peak_value = peak_values.get(word_layout.word, 0.0)
             current_value = float(frame.values.get(word_layout.word, 0.0))
+            if size_max_value is not None:
+                current_value = min(current_value, size_max_value)
             scale = 0.0 if peak_value <= 0 else current_value / peak_value
             font_size = (
                 min_font_size
