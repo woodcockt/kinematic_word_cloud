@@ -8,11 +8,20 @@ import subprocess
 
 from PIL import Image
 
-from .change_color import color_for_absolute_change
+from .change_color import (
+    color_for_absolute_change,
+    color_for_scaled_change,
+    max_absolute_change,
+)
 from .config import DEFAULT_CANVAS_SIZE
 from .data import KeyframeTable
 from .labels import LabelConfig, sample_labels, svg_label_position
-from .layout import ABSOLUTECHANGE_COLOR_BY, ColorOptions, build_peak_layout
+from .layout import (
+    ABSOLUTECHANGE_COLOR_BY,
+    ColorOptions,
+    SCALEDCHANGE_COLOR_BY,
+    build_peak_layout,
+)
 from .physics import PhysicsConfig
 from .render import (
     _build_anchor_layout,
@@ -257,6 +266,16 @@ def _sample_svg_frames(
         color_options is not None
         and color_options.color_by == ABSOLUTECHANGE_COLOR_BY
     )
+    color_by_scaledchange = (
+        color_options is not None
+        and color_options.color_by == SCALEDCHANGE_COLOR_BY
+    )
+    uses_transition_colors = color_by_absolutechange or color_by_scaledchange
+    scaledchange_max_absolute_change = (
+        max_absolute_change(table.frame_values(frame) for frame in table.frames)
+        if color_by_scaledchange
+        else 0.0
+    )
     samples: list[SvgFrameSample] = []
     for frame in iter_timeline_frames(
         table,
@@ -270,12 +289,12 @@ def _sample_svg_frames(
         )
         change_start_values = (
             table.frame_values(frame.start_keyframe)
-            if color_by_absolutechange
+            if uses_transition_colors
             else {}
         )
         change_end_values = (
             table.frame_values(frame.end_keyframe)
-            if color_by_absolutechange
+            if uses_transition_colors
             else {}
         )
         frame_sample: SvgFrameSample = {}
@@ -290,23 +309,36 @@ def _sample_svg_frames(
             )
             opacity = 0.0 if scale <= 0 else 1.0
             center_x, center_y = centers[word_layout.word]
+            word_color = word_layout.color
+            if (
+                color_options is not None
+                and color_options.color_by == ABSOLUTECHANGE_COLOR_BY
+            ):
+                word_color = color_for_absolute_change(
+                    word_layout.word,
+                    change_start_values,
+                    change_end_values,
+                    growth_color=color_options.absolutechange_growth_color,
+                    decline_color=color_options.absolutechange_decline_color,
+                    no_change_color=color_options.absolutechange_no_change_color,
+                )
+            elif (
+                color_options is not None
+                and color_options.color_by == SCALEDCHANGE_COLOR_BY
+            ):
+                word_color = color_for_scaled_change(
+                    word_layout.word,
+                    change_start_values,
+                    change_end_values,
+                    max_absolute_change=scaledchange_max_absolute_change,
+                    colors=color_options.scaledchange_colors,
+                )
             frame_sample[word_layout.word] = {
                 "x": center_x,
                 "y": center_y,
                 "font_size": font_size,
                 "opacity": opacity,
-                "color": (
-                    color_for_absolute_change(
-                        word_layout.word,
-                        change_start_values,
-                        change_end_values,
-                        growth_color=color_options.absolutechange_growth_color,
-                        decline_color=color_options.absolutechange_decline_color,
-                        no_change_color=color_options.absolutechange_no_change_color,
-                    )
-                    if color_by_absolutechange and color_options is not None
-                    else word_layout.color
-                ),
+                "color": word_color,
             }
         samples.append(frame_sample)
 

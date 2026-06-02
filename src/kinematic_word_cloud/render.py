@@ -7,7 +7,11 @@ from typing import Mapping
 
 from PIL import Image, ImageDraw, ImageFont
 
-from .change_color import color_for_absolute_change
+from .change_color import (
+    color_for_absolute_change,
+    color_for_scaled_change,
+    max_absolute_change,
+)
 from .config import DEFAULT_CANVAS_SIZE
 from .data import KeyframeTable
 from .effects import BloomConfig, render_word_bloom
@@ -16,6 +20,7 @@ from .layout import (
     ABSOLUTECHANGE_COLOR_BY,
     CloudLayout,
     ColorOptions,
+    SCALEDCHANGE_COLOR_BY,
     build_layout_from_frequencies,
     build_peak_layout,
 )
@@ -67,6 +72,7 @@ def render_fixed_frame(
     change_start_values: Mapping[str, float] | None = None,
     change_end_values: Mapping[str, float] | None = None,
     color_options: ColorOptions | None = None,
+    scaledchange_max_absolute_change: float = 0.0,
 ) -> Image.Image:
     """Render one fixed-position frame with size scaled by current values."""
 
@@ -98,8 +104,9 @@ def render_fixed_frame(
         scale = current_value / peak_value
         scaled_font_size = word_layout.font_size * scale
         font_size = max(min_font_size, int(round(scaled_font_size)))
-        word_color = (
-            color_for_absolute_change(
+        word_color = word_layout.color
+        if color_options is not None and color_options.color_by == ABSOLUTECHANGE_COLOR_BY:
+            word_color = color_for_absolute_change(
                 word_layout.word,
                 change_start_values or {},
                 change_end_values or {},
@@ -107,12 +114,14 @@ def render_fixed_frame(
                 decline_color=color_options.absolutechange_decline_color,
                 no_change_color=color_options.absolutechange_no_change_color,
             )
-            if (
-                color_options is not None
-                and color_options.color_by == ABSOLUTECHANGE_COLOR_BY
+        elif color_options is not None and color_options.color_by == SCALEDCHANGE_COLOR_BY:
+            word_color = color_for_scaled_change(
+                word_layout.word,
+                change_start_values or {},
+                change_end_values or {},
+                max_absolute_change=scaledchange_max_absolute_change,
+                colors=color_options.scaledchange_colors,
             )
-            else word_layout.color
-        )
         current_image = _render_word_image(
             word_layout.word,
             font_path=font_path,
@@ -230,6 +239,16 @@ def render_fixed_animation_frames(
         color_options is not None
         and color_options.color_by == ABSOLUTECHANGE_COLOR_BY
     )
+    color_by_scaledchange = (
+        color_options is not None
+        and color_options.color_by == SCALEDCHANGE_COLOR_BY
+    )
+    uses_transition_colors = color_by_absolutechange or color_by_scaledchange
+    scaledchange_max_absolute_change = (
+        max_absolute_change(table.frame_values(frame) for frame in table.frames)
+        if color_by_scaledchange
+        else 0.0
+    )
 
     for frame in iter_timeline_frames(
         table,
@@ -244,12 +263,12 @@ def render_fixed_animation_frames(
         )
         change_start_values = (
             table.frame_values(frame.start_keyframe)
-            if color_by_absolutechange
+            if uses_transition_colors
             else None
         )
         change_end_values = (
             table.frame_values(frame.end_keyframe)
-            if color_by_absolutechange
+            if uses_transition_colors
             else None
         )
         render_fixed_frame(
@@ -266,6 +285,7 @@ def render_fixed_animation_frames(
             change_start_values=change_start_values,
             change_end_values=change_end_values,
             color_options=color_options,
+            scaledchange_max_absolute_change=scaledchange_max_absolute_change,
         )
         frame_paths.append(frame_path)
 

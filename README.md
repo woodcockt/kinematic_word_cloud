@@ -243,14 +243,16 @@ python3 scripts/render_animation.py --palette okabe-ito --color-by group
 python3 scripts/render_animation.py --palette-file examples/palette_bioit.hex --color-by word
 python3 scripts/render_animation.py --color-by single --default-color '#222222'
 python3 scripts/render_animation.py --color-by absolutechange --interpolation rapid25
+python3 scripts/render_animation.py --color-by scaledchange --scaledchange-colors '#C81D25,#F7C548,#00A676'
 python3 scripts/render_animation.py --group-color 'design=#2A9D8F' --group-color 'motion=#4A2C7A'
 ```
 
 Available palettes are `default`, `tableau`, and `okabe-ito`. `color_by` can be
-`group`, `word`, `single`, or `absolutechange`. Spreadsheet `color` values win
-first for static modes. In `group` mode, configured group colors win next, then
-palette-derived group colors. Ungrouped words use deterministic palette colors
-unless `color_by` is `single`, in which case they use `default_color`.
+`group`, `word`, `single`, `absolutechange`, or `scaledchange`. Spreadsheet
+`color` values win first for static modes. In `group` mode, configured group
+colors win next, then palette-derived group colors. Ungrouped words use
+deterministic palette colors unless `color_by` is `single`, in which case they
+use `default_color`.
 
 `absolutechange` mode overrides spreadsheet colors, group colors, palettes, and
 `default_color` at render time. Words use the no-change color when their start
@@ -281,6 +283,30 @@ color_by = "absolutechange"
 growth_color = "#00A676"
 decline_color = "#C81D25"
 no_change_color = "#F7C548"
+```
+
+`scaledchange` mode also overrides static colors at render time, but maps the
+signed keyframe-to-keyframe change onto an ordered color scale. The scale is
+global and symmetric around zero: the largest decline maps to the first color,
+no change maps to the center of the color ramp, and the largest growth maps to
+the last color. Color stops are blended with smoothstep easing between stops.
+The default color scale is `["#D62828", "#F2C94C", "#2EAD4D"]`.
+
+Configure scaled-change colors on the CLI:
+
+```bash
+python3 scripts/render_animation.py \
+  --color-by scaledchange \
+  --scaledchange-colors '#C81D25,#F7C548,#00A676'
+```
+
+Or use a grouped TOML table:
+
+```toml
+color_by = "scaledchange"
+
+[scaledchange]
+colors = ["#C81D25", "#F7C548", "#00A676"]
 ```
 
 In TOML, group overrides use a `[group_colors]` table:

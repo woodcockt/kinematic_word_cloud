@@ -30,6 +30,7 @@ from kinematic_word_cloud.layout import (
     ABSOLUTECHANGE_COLOR_BY,
     COLOR_BY_MODES,
     COLOR_PALETTES,
+    SCALEDCHANGE_COLOR_BY,
 )
 from kinematic_word_cloud.render_config import (
     build_bloom_config,
@@ -239,8 +240,8 @@ def main() -> None:
         choices=COLOR_BY_MODES,
         default=argparse.SUPPRESS,
         help=(
-            "How to color words. The absolutechange mode overrides configured "
-            "and spreadsheet colors per keyframe transition."
+            "How to color words. Change modes override configured and "
+            "spreadsheet colors per keyframe transition."
         ),
     )
     parser.add_argument(
@@ -262,6 +263,16 @@ def main() -> None:
         "--absolutechange-no-change-color",
         default=argparse.SUPPRESS,
         help="Hex color for unchanged words in --color-by absolutechange mode.",
+    )
+    parser.add_argument(
+        "--scaledchange-colors",
+        nargs="+",
+        default=argparse.SUPPRESS,
+        metavar="COLOR",
+        help=(
+            "Ordered color stops for --color-by scaledchange. Accepts "
+            "space-separated or comma-separated hex colors."
+        ),
     )
     parser.add_argument(
         "--group-color",
@@ -400,6 +411,12 @@ def main() -> None:
             f"growth={color_options.absolutechange_growth_color}, "
             f"decline={color_options.absolutechange_decline_color}, "
             f"no_change={color_options.absolutechange_no_change_color}"
+        )
+    if color_options.color_by == SCALEDCHANGE_COLOR_BY:
+        print(
+            "Scaledchange colors: "
+            f"{', '.join(color_options.scaledchange_colors)} "
+            "(global signed delta scale)"
         )
     if bloom_config is not None:
         print(

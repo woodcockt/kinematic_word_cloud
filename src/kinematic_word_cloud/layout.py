@@ -14,6 +14,7 @@ from .change_color import (
     DEFAULT_ABSOLUTECHANGE_DECLINE_COLOR,
     DEFAULT_ABSOLUTECHANGE_GROWTH_COLOR,
     DEFAULT_ABSOLUTECHANGE_NO_CHANGE_COLOR,
+    DEFAULT_SCALEDCHANGE_COLORS,
 )
 from .config import DEFAULT_CANVAS_SIZE
 from .data import KeyframeTable
@@ -58,11 +59,13 @@ COLOR_PALETTES: dict[str, tuple[str, ...]] = {
 DEFAULT_PALETTE_NAME = "default"
 DEFAULT_COLOR_BY = "group"
 ABSOLUTECHANGE_COLOR_BY = "absolutechange"
+SCALEDCHANGE_COLOR_BY = "scaledchange"
 COLOR_BY_MODES: tuple[str, ...] = (
     "group",
     "word",
     "single",
     ABSOLUTECHANGE_COLOR_BY,
+    SCALEDCHANGE_COLOR_BY,
 )
 DEFAULT_FALLBACK_COLOR = "#222222"
 
@@ -78,6 +81,7 @@ class ColorOptions:
     absolutechange_growth_color: str = DEFAULT_ABSOLUTECHANGE_GROWTH_COLOR
     absolutechange_decline_color: str = DEFAULT_ABSOLUTECHANGE_DECLINE_COLOR
     absolutechange_no_change_color: str = DEFAULT_ABSOLUTECHANGE_NO_CHANGE_COLOR
+    scaledchange_colors: tuple[str, ...] = DEFAULT_SCALEDCHANGE_COLORS
 
 
 @dataclass(frozen=True)
@@ -200,10 +204,10 @@ def build_color_func(
     1. explicit word color,
     2. configured or deterministic group color when color_by="group",
     3. deterministic fallback color by word when color_by="group" or "word",
-    4. neutral default color when color_by="single" or "absolutechange".
+    4. neutral default color when color_by="single" or a change mode.
 
     The animated renderer overrides these layout colors frame-by-frame when
-    color_by="absolutechange".
+    color_by is a change mode.
     """
 
     options = color_options or ColorOptions(palette=color_palette)
