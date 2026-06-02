@@ -328,19 +328,23 @@ Choose how values move between keyframes:
 ```bash
 python3 scripts/render_animation.py --interpolation linear
 python3 scripts/render_animation.py --interpolation smoothstep
+python3 scripts/render_animation.py --interpolation rapid25
+python3 scripts/render_animation.py --interpolation rapid50
 python3 scripts/render_animation.py --interpolation catmull-rom
 python3 scripts/render_animation.py --interpolation monotone-cubic
 ```
 
 `linear` changes values at a constant rate. `smoothstep` eases in and out of
-each transition while still landing exactly on every keyframe. `catmull-rom`
-uses neighboring keyframes to smooth velocity through keyframe boundaries,
-preserving exact keyframe values and clamping negative interpolated values to
-zero. Because Catmull-Rom is not monotone, it can overshoot above local
-keyframe values. `monotone-cubic` uses limited cubic Hermite slopes to smooth
-between keyframes while keeping each interpolated value between its surrounding
-keyframe values. Use `linear` or `smoothstep` when simple segment-local behavior
-matters most.
+each transition while still landing exactly on every keyframe. `rapid10`,
+`rapid25`, and `rapid50` make a linear change during the first 10%, 25%, or 50%
+of each transition, then hold the destination keyframe value. `rapid` is an
+alias for `rapid25`. `catmull-rom` uses neighboring keyframes to smooth velocity
+through keyframe boundaries, preserving exact keyframe values and clamping
+negative interpolated values to zero. Because Catmull-Rom is not monotone, it
+can overshoot above local keyframe values. `monotone-cubic` uses limited cubic
+Hermite slopes to smooth between keyframes while keeping each interpolated value
+between its surrounding keyframe values. Use `linear` or `smoothstep` when
+simple segment-local behavior matters most.
 
 Export sampled animated SVG:
 

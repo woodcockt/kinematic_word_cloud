@@ -12,6 +12,10 @@ from .data import KeyframeDataError, KeyframeTable
 InterpolationMode = Literal[
     "linear",
     "smoothstep",
+    "rapid",
+    "rapid10",
+    "rapid25",
+    "rapid50",
     "catmull-rom",
     "monotone-cubic",
 ]
@@ -19,9 +23,19 @@ DEFAULT_INTERPOLATION: InterpolationMode = "linear"
 INTERPOLATION_MODES: tuple[str, ...] = (
     "linear",
     "smoothstep",
+    "rapid",
+    "rapid10",
+    "rapid25",
+    "rapid50",
     "catmull-rom",
     "monotone-cubic",
 )
+RAPID_ACTIVE_FRACTIONS: dict[str, float] = {
+    "rapid": 0.25,
+    "rapid10": 0.10,
+    "rapid25": 0.25,
+    "rapid50": 0.50,
+}
 
 
 @dataclass(frozen=True)
@@ -167,6 +181,8 @@ def _interpolate_phase(phase: float, interpolation: str) -> float:
         return phase
     if interpolation in {"catmull-rom", "monotone-cubic"}:
         return phase
+    if interpolation in RAPID_ACTIVE_FRACTIONS:
+        return min(1.0, phase / RAPID_ACTIVE_FRACTIONS[interpolation])
     return phase * phase * (3.0 - 2.0 * phase)
 
 
