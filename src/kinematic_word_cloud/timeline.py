@@ -9,9 +9,9 @@ from typing import Iterator, Literal
 from .data import KeyframeDataError, KeyframeTable
 
 
-InterpolationMode = Literal["linear", "smoothstep"]
+InterpolationMode = Literal["linear", "smoothstep", "catmull-rom"]
 DEFAULT_INTERPOLATION: InterpolationMode = "linear"
-INTERPOLATION_MODES: tuple[str, ...] = ("linear", "smoothstep")
+INTERPOLATION_MODES: tuple[str, ...] = ("linear", "smoothstep", "catmull-rom")
 
 
 @dataclass(frozen=True)
@@ -115,11 +115,19 @@ def _build_frame(
     start_index = min(floor(position), max_position)
     end_index = min(start_index + 1, max_position)
     phase = 0.0 if start_index == end_index else position - start_index
-    interpolated_phase = _interpolate_phase(phase, interpolation)
-
-    start_values = table.values.iloc[:, start_index]
-    end_values = table.values.iloc[:, end_index]
-    interpolated = start_values + (end_values - start_values) * interpolated_phase
+    if interpolation == "catmull-rom":
+        interpolated_phase = phase
+        interpolated = _catmull_rom_values(
+            table,
+            start_index=start_index,
+            end_index=end_index,
+            phase=phase,
+        )
+    else:
+        interpolated_phase = _interpolate_phase(phase, interpolation)
+        start_values = table.values.iloc[:, start_index]
+        end_values = table.values.iloc[:, end_index]
+        interpolated = start_values + (end_values - start_values) * interpolated_phase
 
     return TimelineFrame(
         index=index,
@@ -139,7 +147,34 @@ def _interpolate_phase(phase: float, interpolation: str) -> float:
     _validate_interpolation(interpolation)
     if interpolation == "linear":
         return phase
+    if interpolation == "catmull-rom":
+        return phase
     return phase * phase * (3.0 - 2.0 * phase)
+
+
+def _catmull_rom_values(
+    table: KeyframeTable,
+    *,
+    start_index: int,
+    end_index: int,
+    phase: float,
+):
+    previous_index = max(0, start_index - 1)
+    following_index = min(table.frame_count - 1, end_index + 1)
+    p0 = table.values.iloc[:, previous_index]
+    p1 = table.values.iloc[:, start_index]
+    p2 = table.values.iloc[:, end_index]
+    p3 = table.values.iloc[:, following_index]
+    t2 = phase * phase
+    t3 = t2 * phase
+
+    interpolated = 0.5 * (
+        (2.0 * p1)
+        + (-p0 + p2) * phase
+        + (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3) * t2
+        + (-p0 + 3.0 * p1 - 3.0 * p2 + p3) * t3
+    )
+    return interpolated.clip(lower=0.0)
 
 
 def _validate_interpolation(interpolation: str) -> None:

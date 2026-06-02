@@ -328,10 +328,15 @@ Choose how values move between keyframes:
 ```bash
 python3 scripts/render_animation.py --interpolation linear
 python3 scripts/render_animation.py --interpolation smoothstep
+python3 scripts/render_animation.py --interpolation catmull-rom
 ```
 
 `linear` changes values at a constant rate. `smoothstep` eases in and out of
-each transition while still landing exactly on every keyframe.
+each transition while still landing exactly on every keyframe. `catmull-rom`
+uses neighboring keyframes to smooth velocity through keyframe boundaries,
+preserving exact keyframe values and clamping negative interpolated values to
+zero. Because Catmull-Rom is not monotone, it can overshoot above local
+keyframe values; use `linear` or `smoothstep` when strict segment bounds matter.
 
 Export sampled animated SVG:
 
