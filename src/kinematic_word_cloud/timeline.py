@@ -9,9 +9,19 @@ from typing import Iterator, Literal
 from .data import KeyframeDataError, KeyframeTable
 
 
-InterpolationMode = Literal["linear", "smoothstep", "catmull-rom"]
+InterpolationMode = Literal[
+    "linear",
+    "smoothstep",
+    "catmull-rom",
+    "monotone-cubic",
+]
 DEFAULT_INTERPOLATION: InterpolationMode = "linear"
-INTERPOLATION_MODES: tuple[str, ...] = ("linear", "smoothstep", "catmull-rom")
+INTERPOLATION_MODES: tuple[str, ...] = (
+    "linear",
+    "smoothstep",
+    "catmull-rom",
+    "monotone-cubic",
+)
 
 
 @dataclass(frozen=True)
@@ -123,6 +133,14 @@ def _build_frame(
             end_index=end_index,
             phase=phase,
         )
+    elif interpolation == "monotone-cubic":
+        interpolated_phase = phase
+        interpolated = _monotone_cubic_values(
+            table,
+            start_index=start_index,
+            end_index=end_index,
+            phase=phase,
+        )
     else:
         interpolated_phase = _interpolate_phase(phase, interpolation)
         start_values = table.values.iloc[:, start_index]
@@ -147,7 +165,7 @@ def _interpolate_phase(phase: float, interpolation: str) -> float:
     _validate_interpolation(interpolation)
     if interpolation == "linear":
         return phase
-    if interpolation == "catmull-rom":
+    if interpolation in {"catmull-rom", "monotone-cubic"}:
         return phase
     return phase * phase * (3.0 - 2.0 * phase)
 
@@ -175,6 +193,63 @@ def _catmull_rom_values(
         + (-p0 + 3.0 * p1 - 3.0 * p2 + p3) * t3
     )
     return interpolated.clip(lower=0.0)
+
+
+def _monotone_cubic_values(
+    table: KeyframeTable,
+    *,
+    start_index: int,
+    end_index: int,
+    phase: float,
+):
+    if start_index == end_index:
+        return table.values.iloc[:, start_index]
+
+    start_values = table.values.iloc[:, start_index]
+    end_values = table.values.iloc[:, end_index]
+    start_tangent = _monotone_tangent(table, start_index)
+    end_tangent = _monotone_tangent(table, end_index)
+    t2 = phase * phase
+    t3 = t2 * phase
+
+    interpolated = (
+        (2.0 * t3 - 3.0 * t2 + 1.0) * start_values
+        + (t3 - 2.0 * t2 + phase) * start_tangent
+        + (-2.0 * t3 + 3.0 * t2) * end_values
+        + (t3 - t2) * end_tangent
+    )
+    lower = start_values.where(start_values <= end_values, end_values)
+    upper = start_values.where(start_values >= end_values, end_values)
+    bounded = interpolated.where(interpolated >= lower, lower)
+    bounded = bounded.where(bounded <= upper, upper)
+    return bounded.clip(lower=0.0)
+
+
+def _monotone_tangent(table: KeyframeTable, keyframe_index: int):
+    if table.frame_count == 2:
+        return table.values.iloc[:, 1] - table.values.iloc[:, 0]
+    if keyframe_index == 0:
+        return table.values.iloc[:, 1] - table.values.iloc[:, 0]
+    if keyframe_index == table.frame_count - 1:
+        return table.values.iloc[:, -1] - table.values.iloc[:, -2]
+
+    previous_delta = (
+        table.values.iloc[:, keyframe_index]
+        - table.values.iloc[:, keyframe_index - 1]
+    )
+    next_delta = (
+        table.values.iloc[:, keyframe_index + 1]
+        - table.values.iloc[:, keyframe_index]
+    )
+    same_direction = previous_delta * next_delta > 0
+    denominator = (previous_delta + next_delta).where(same_direction, 1.0)
+    harmonic_mean = (
+        2.0
+        * previous_delta
+        * next_delta
+        / denominator
+    )
+    return harmonic_mean.where(same_direction, 0.0)
 
 
 def _validate_interpolation(interpolation: str) -> None:
