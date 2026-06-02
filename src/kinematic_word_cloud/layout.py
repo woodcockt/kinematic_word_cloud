@@ -16,6 +16,7 @@ from .change_color import (
     DEFAULT_ABSOLUTECHANGE_NO_CHANGE_COLOR,
     DEFAULT_SCALEDCHANGE_COLORS,
 )
+from .background import wordcloud_background_color, wordcloud_mode
 from .config import DEFAULT_CANVAS_SIZE
 from .data import KeyframeTable
 
@@ -111,7 +112,7 @@ def build_peak_layout(
     *,
     width: int = DEFAULT_CANVAS_SIZE.width,
     height: int = DEFAULT_CANVAS_SIZE.height,
-    background_color: str = "white",
+    background_color: str | None = "white",
     random_state: int = 42,
     colormap: str = "viridis",
     prefer_horizontal: float = 0.95,
@@ -142,7 +143,7 @@ def build_layout_from_frequencies(
     word_groups: Mapping[str, str] | None = None,
     width: int = DEFAULT_CANVAS_SIZE.width,
     height: int = DEFAULT_CANVAS_SIZE.height,
-    background_color: str = "white",
+    background_color: str | None = "white",
     random_state: int = 42,
     colormap: str = "viridis",
     prefer_horizontal: float = 0.95,
@@ -175,7 +176,8 @@ def build_layout_from_frequencies(
     wordcloud = WordCloud(
         width=width,
         height=height,
-        background_color=background_color,
+        background_color=wordcloud_background_color(background_color),
+        mode=wordcloud_mode(background_color),
         random_state=random_state,
         colormap=colormap,
         color_func=color_func,

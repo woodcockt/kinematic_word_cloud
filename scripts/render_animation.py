@@ -15,6 +15,7 @@ os.environ.setdefault("XDG_CACHE_HOME", str(CACHE_ROOT))
 
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
+from kinematic_word_cloud.background import is_transparent_background
 from kinematic_word_cloud.config import (
     ASPECT_CHOICES,
     DEFAULT_ASPECT,
@@ -186,9 +187,15 @@ def main() -> None:
         default=argparse.SUPPRESS,
         metavar="FORMAT",
         help=(
-            "Animation export formats: gif, mp4, svg. Accepts space- or "
+            "Animation export formats: frames, gif, mp4, svg. Accepts space- or "
             "comma-separated values."
         ),
+    )
+    parser.add_argument(
+        "--frames-only",
+        action="store_true",
+        default=argparse.SUPPRESS,
+        help="Write the PNG frame sequence and skip GIF, MP4, and SVG export.",
     )
     parser.add_argument(
         "--fps",
@@ -288,7 +295,7 @@ def main() -> None:
         "--group-color",
         action="append",
         default=argparse.SUPPRESS,
-        metavar="GROUP=#RRGGBB",
+        metavar="GROUP=#RRGGBB[AA]",
         help="Explicit group color mapping. Repeat for multiple groups.",
     )
     parser.add_argument(
@@ -378,6 +385,11 @@ def main() -> None:
         export_formats = resolve_export_formats(args, config)
     except KeyframeDataError as exc:
         parser.error(str(exc))
+    if is_transparent_background(background_color) and "mp4" in export_formats:
+        parser.error(
+            "Transparent backgrounds cannot be preserved in standard MP4 export. "
+            "Use --frames-only, --exports frames, or an opaque background."
+        )
     output_name = "physics_animation" if use_physics else "fixed_animation"
     output_dir = resolve_project_path(
         setting(

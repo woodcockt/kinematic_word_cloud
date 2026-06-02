@@ -13,7 +13,9 @@ import pandas as pd
 DEFAULT_WORD_COLUMN = "word"
 DEFAULT_COLOR_COLUMN = "color"
 DEFAULT_GROUP_COLUMN = "group"
-HEX_COLOR_PATTERN = re.compile(r"^#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$")
+HEX_COLOR_PATTERN = re.compile(
+    r"^#?([0-9a-fA-F]{3}|[0-9a-fA-F]{4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$"
+)
 
 
 class KeyframeDataError(ValueError):
@@ -276,11 +278,11 @@ def _clean_hex_color(value: Any, *, word: str) -> str | None:
     if match is None:
         raise KeyframeDataError(
             f"Invalid hex color for word {word!r}: {text!r}. "
-            "Expected #RGB or #RRGGBB."
+            "Expected #RGB, #RGBA, #RRGGBB, or #RRGGBBAA."
         )
 
     digits = match.group(1)
-    if len(digits) == 3:
+    if len(digits) in {3, 4}:
         digits = "".join(channel * 2 for channel in digits)
 
     return f"#{digits.upper()}"

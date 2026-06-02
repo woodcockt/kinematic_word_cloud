@@ -8,6 +8,7 @@ from typing import Mapping
 
 from PIL import Image, ImageDraw, ImageFont
 
+from .background import is_transparent_background, pillow_background_fill
 from .change_color import (
     color_for_absolute_change,
     color_for_scaled_change,
@@ -86,7 +87,11 @@ def render_fixed_frame(
         if background_color is not None
         else getattr(wordcloud, "background_color", "white")
     )
-    image = Image.new("RGBA", (layout.width, layout.height), background)
+    image = Image.new(
+        "RGBA",
+        (layout.width, layout.height),
+        pillow_background_fill(background),
+    )
     word_layer = Image.new("RGBA", image.size, (255, 255, 255, 0))
     bloom_layer = (
         Image.new("RGBA", image.size, (255, 255, 255, 0))
@@ -157,12 +162,12 @@ def render_fixed_frame(
                 source=bloom_config.source,
                 edge_width=bloom_config.edge_width,
             )
-            bloom_layer.paste(
+            _alpha_composite_at(
+                bloom_layer,
                 bloom_image,
                 (paste_x - padding, paste_y - padding),
-                bloom_image,
             )
-        word_layer.paste(current_image, (paste_x, paste_y), current_image)
+        _alpha_composite_at(word_layer, current_image, (paste_x, paste_y))
 
     if bloom_layer is not None:
         image = Image.alpha_composite(image, bloom_layer)
@@ -177,7 +182,11 @@ def render_fixed_frame(
 
     output = Path(output_path)
     output.parent.mkdir(parents=True, exist_ok=True)
-    output_image = image if image_mode == "RGBA" else image.convert(image_mode)
+    output_image = (
+        image
+        if image_mode == "RGBA" or is_transparent_background(background)
+        else image.convert(image_mode)
+    )
     output_image.save(output)
     return output_image
 
@@ -527,6 +536,28 @@ def _measure_word(
         color="#000000",
     )
     return word_image.size
+
+
+def _alpha_composite_at(
+    base: Image.Image,
+    overlay: Image.Image,
+    position: tuple[int, int],
+) -> None:
+    """Alpha-composite an overlay into a base image, cropping at boundaries."""
+
+    paste_x, paste_y = position
+    source_left = max(0, -paste_x)
+    source_top = max(0, -paste_y)
+    source_right = min(overlay.width, base.width - paste_x)
+    source_bottom = min(overlay.height, base.height - paste_y)
+    if source_right <= source_left or source_bottom <= source_top:
+        return
+
+    cropped = overlay.crop((source_left, source_top, source_right, source_bottom))
+    base.alpha_composite(
+        cropped,
+        (max(0, paste_x), max(0, paste_y)),
+    )
 
 
 def _render_word_image(
