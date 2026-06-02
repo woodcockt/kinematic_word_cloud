@@ -331,6 +331,7 @@ python3 scripts/render_animation.py --interpolation smoothstep
 python3 scripts/render_animation.py --interpolation rapid25
 python3 scripts/render_animation.py --interpolation rapid50
 python3 scripts/render_animation.py --interpolation bounce
+python3 scripts/render_animation.py --interpolation elastic
 python3 scripts/render_animation.py --interpolation catmull-rom
 python3 scripts/render_animation.py --interpolation monotone-cubic
 ```
@@ -341,15 +342,16 @@ each transition while still landing exactly on every keyframe. `rapid10`,
 of each transition, then hold the destination keyframe value. `rapid` is an
 alias for `rapid25`. `bounce` moves past the destination by a small amount,
 settles back by halfway through the transition, then holds the destination
-keyframe value. Bounce clamps negative values to zero, but it can briefly exceed
-surrounding keyframe values and may produce temporary overlaps. `catmull-rom`
-uses neighboring keyframes to smooth velocity through keyframe boundaries,
-preserving exact keyframe values and clamping negative interpolated values to
-zero. Because Catmull-Rom is not monotone, it can overshoot above local keyframe
-values. `monotone-cubic` uses limited cubic Hermite slopes to smooth between
-keyframes while keeping each interpolated value between its surrounding keyframe
-values. Use `linear` or `smoothstep` when simple segment-local behavior matters
-most.
+keyframe value. `elastic` uses a damped oscillating ease-out curve to overshoot
+and settle by the next keyframe. Bounce and elastic clamp negative values to
+zero, but they can briefly exceed surrounding keyframe values and may produce
+temporary overlaps. `catmull-rom` uses neighboring keyframes to smooth velocity
+through keyframe boundaries, preserving exact keyframe values and clamping
+negative interpolated values to zero. Because Catmull-Rom is not monotone, it
+can overshoot above local keyframe values. `monotone-cubic` uses limited cubic
+Hermite slopes to smooth between keyframes while keeping each interpolated value
+between its surrounding keyframe values. Use `linear` or `smoothstep` when
+simple segment-local behavior matters most.
 
 Export sampled animated SVG:
 

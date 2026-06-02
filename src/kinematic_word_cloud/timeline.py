@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from math import floor
+from math import floor, pi, sin
 from typing import Iterator, Literal
 
 from .data import KeyframeDataError, KeyframeTable
@@ -17,6 +17,7 @@ InterpolationMode = Literal[
     "rapid25",
     "rapid50",
     "bounce",
+    "elastic",
     "catmull-rom",
     "monotone-cubic",
 ]
@@ -29,6 +30,7 @@ INTERPOLATION_MODES: tuple[str, ...] = (
     "rapid25",
     "rapid50",
     "bounce",
+    "elastic",
     "catmull-rom",
     "monotone-cubic",
 )
@@ -41,6 +43,7 @@ RAPID_ACTIVE_FRACTIONS: dict[str, float] = {
 BOUNCE_OVERSHOOT = 0.18
 BOUNCE_OVERSHOOT_PHASE = 0.20
 BOUNCE_SETTLE_PHASE = 0.50
+ELASTIC_PERIOD = 0.30
 
 
 @dataclass(frozen=True)
@@ -165,7 +168,7 @@ def _build_frame(
         start_values = table.values.iloc[:, start_index]
         end_values = table.values.iloc[:, end_index]
         interpolated = start_values + (end_values - start_values) * interpolated_phase
-        if interpolation == "bounce":
+        if interpolation in {"bounce", "elastic"}:
             interpolated = interpolated.clip(lower=0.0)
 
     return TimelineFrame(
@@ -192,6 +195,8 @@ def _interpolate_phase(phase: float, interpolation: str) -> float:
         return min(1.0, phase / RAPID_ACTIVE_FRACTIONS[interpolation])
     if interpolation == "bounce":
         return _bounce_phase(phase)
+    if interpolation == "elastic":
+        return _elastic_phase(phase)
     return phase * phase * (3.0 - 2.0 * phase)
 
 
@@ -206,6 +211,20 @@ def _bounce_phase(phase: float) -> float:
         eased_phase = local_phase * local_phase * (3.0 - 2.0 * local_phase)
         return (1.0 + BOUNCE_OVERSHOOT) - BOUNCE_OVERSHOOT * eased_phase
     return 1.0
+
+
+def _elastic_phase(phase: float) -> float:
+    if phase <= 0:
+        return 0.0
+    if phase >= 1:
+        return 1.0
+
+    phase_shift = ELASTIC_PERIOD / 4.0
+    return (
+        2.0 ** (-10.0 * phase)
+        * sin((phase - phase_shift) * (2.0 * pi) / ELASTIC_PERIOD)
+        + 1.0
+    )
 
 
 def _catmull_rom_values(
