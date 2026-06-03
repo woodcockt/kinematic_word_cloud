@@ -21,6 +21,14 @@ from .data import KeyframeDataError, KeyframeTable, load_keyframes
 from .labels import LabelConfig
 from .layout import ColorOptions
 from .render_config import load_render_config
+from .scenes import (
+    DEFAULT_LAYOUT_MODE,
+    GLOBAL_LAYOUT_MODE,
+    SCENE_LAYOUT_MODE,
+    SceneKeyframeData,
+    SceneRenderInfo,
+    SceneSlice,
+)
 
 __all__ = [
     "AnimationTiming",
@@ -32,6 +40,12 @@ __all__ = [
     "ColorOptions",
     "RenderOptions",
     "RenderResult",
+    "SceneKeyframeData",
+    "SceneRenderInfo",
+    "SceneSlice",
+    "DEFAULT_LAYOUT_MODE",
+    "GLOBAL_LAYOUT_MODE",
+    "SCENE_LAYOUT_MODE",
     "load_render_config",
     "load_keyframes",
     "render_animation",

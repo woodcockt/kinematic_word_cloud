@@ -1,0 +1,14 @@
+input = "scene_keyframes.csv"
+layout_mode = "scene"
+aspect = "16:9"
+background_color = "white"
+exports = ["frames"]
+output_dir = "../output/scene_frames"
+frames_per_transition = 6
+interpolation = "smoothstep"
+color_by = "group"
+
+[scene_starts]
+intro = "s001"
+chorus = "s004"
+outro = "s006"

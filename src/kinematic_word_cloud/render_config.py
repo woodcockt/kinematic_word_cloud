@@ -18,6 +18,7 @@ from .layout import (
     DEFAULT_PALETTE_NAME,
     ColorOptions,
 )
+from .scenes import DEFAULT_LAYOUT_MODE, LAYOUT_MODES
 from .timeline import DEFAULT_INTERPOLATION, INTERPOLATION_MODES
 
 
@@ -239,6 +240,40 @@ def resolve_size_max_value(
     if size_max_value is not None and size_max_value <= 0:
         raise KeyframeDataError("size_max_value must be greater than zero.")
     return size_max_value
+
+
+def resolve_layout_mode(
+    cli_values: object,
+    config: Mapping[str, Any],
+) -> str:
+    """Resolve the layout mode."""
+
+    layout_mode = str(setting(cli_values, config, "layout_mode", DEFAULT_LAYOUT_MODE))
+    if layout_mode not in LAYOUT_MODES:
+        raise KeyframeDataError(
+            "layout_mode must be one of: " + ", ".join(LAYOUT_MODES)
+        )
+    return layout_mode
+
+
+def resolve_scene_starts(
+    cli_values: object,
+    config: Mapping[str, Any],
+) -> dict[str, str]:
+    """Resolve scene start labels from CLI or TOML."""
+
+    if hasattr(cli_values, "scene_start"):
+        return _parse_cli_scene_starts(getattr(cli_values, "scene_start"))
+    if "scene_starts" not in config:
+        return {}
+
+    scene_starts = config["scene_starts"]
+    if not isinstance(scene_starts, Mapping):
+        raise KeyframeDataError("Config key 'scene_starts' must be a table.")
+    return {
+        str(scene).strip(): str(frame).strip()
+        for scene, frame in scene_starts.items()
+    }
 
 
 def resolve_color_options(
@@ -742,6 +777,31 @@ def _parse_cli_group_colors(values: Any) -> dict[str, str]:
         group_colors[group] = _normalize_hex_color(color, f"group color for {group}")
 
     return group_colors
+
+
+def _parse_cli_scene_starts(values: Any) -> dict[str, str]:
+    if isinstance(values, str):
+        raw_values = [values]
+    elif isinstance(values, list):
+        raw_values = values
+    else:
+        raise KeyframeDataError("--scene-start must be SCENE=FRAME.")
+
+    scene_starts: dict[str, str] = {}
+    for raw_value in raw_values:
+        text = str(raw_value)
+        if "=" not in text:
+            raise KeyframeDataError("--scene-start must be SCENE=FRAME.")
+        scene, frame = text.split("=", 1)
+        scene = scene.strip()
+        frame = frame.strip()
+        if not scene or not frame:
+            raise KeyframeDataError("--scene-start cannot contain blank values.")
+        if scene in scene_starts:
+            raise KeyframeDataError(f"Duplicate --scene-start for scene {scene!r}.")
+        scene_starts[scene] = frame
+
+    return scene_starts
 
 
 def _parse_color_stops(value: Any, name: str) -> tuple[str, ...]:

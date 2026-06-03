@@ -304,6 +304,28 @@ Relative paths in a config file are resolved from the config file's directory.
 Without a config file, relative paths are resolved from the current working
 directory.
 
+Render long or sparse timelines with per-scene layouts:
+
+```bash
+kwc --config examples/scene_config.toml
+```
+
+Scene mode uses a single wide CSV with global frame columns plus `scene`, `word`,
+and optional `id`, `color`, `group`, `x`, and `y` columns. Define the scene cuts
+in TOML:
+
+```toml
+layout_mode = "scene"
+scene_starts = { intro = "s001", chorus = "s004", outro = "s006" }
+```
+
+Each scene is laid out from only its own rows and frame span, so sparse long
+animations stay denser than a single global layout. `id` defaults to `word` and
+is used to carry positions across scenes. Optional `x` and `y` values are
+normalized coordinates from `0` to `1`; they seed or override a word's position.
+Scene mode currently supports PNG frames, GIF, and MP4. SVG scene export is not
+implemented yet.
+
 Choose deterministic color behavior:
 
 ```bash
