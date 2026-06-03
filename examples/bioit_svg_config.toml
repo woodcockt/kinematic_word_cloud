@@ -1,13 +1,13 @@
-input = "examples/bioit_top_terms_2016_2026.csv"
+input = "bioit_top_terms_2016_2026.csv"
 aspect = "16:9"
 background_color = "white"
 exports = ["svg"]
-output = "output/bioit_top_terms"
-output_dir = "output/bioit_top_terms_frames"
+output = "../output/bioit_top_terms"
+output_dir = "../output/bioit_top_terms_frames"
 total_duration = 12
 fps = 12
 interpolation = "smoothstep"
-palette_file = "examples/palette_bioit.hex"
+palette_file = "palette_bioit.hex"
 color_by = "group"
 
 [group_colors]

@@ -119,7 +119,43 @@ python3 scripts/render_examples.py
 
 <img src="examples/renders/bioit_vertical.gif" width="220" alt="Vertical 9:16 BioIT word cloud animation">
 
-## Current Prototype
+## Install
+
+After the first release is published to PyPI, install it with:
+
+```bash
+pip install kinematic-word-cloud
+```
+
+Then render a CSV from the installed CLI:
+
+```bash
+kwc --input path/to/keyframes.csv --exports gif mp4
+```
+
+The package exposes both `kinematic-word-cloud` and the shorter `kwc` console
+commands.
+
+Use it as a Python SDK:
+
+```python
+from kinematic_word_cloud import RenderOptions, render_animation
+
+result = render_animation(
+    RenderOptions(
+        input_path="examples/simple_keyframes.csv",
+        output_dir="output/sdk_frames",
+        output="output/sdk_demo",
+        exports=("gif",),
+        frames_per_transition=12,
+    )
+)
+
+print(result.frame_paths)
+print(result.export_paths)
+```
+
+## CLI Usage
 
 Render the first static peak-value cloud from the example data:
 
@@ -132,29 +168,29 @@ The script writes `output/starting_cloud.png`.
 Render interpolated PNG frames:
 
 ```bash
-python3 scripts/render_animation.py
+kwc --input examples/simple_keyframes.csv
 ```
 
-By default, the script uses fixed word positions and writes a PNG sequence to
+By default, the CLI uses fixed word positions and writes a PNG sequence to
 `output/fixed_frames/`.
 
 Choose output destinations:
 
 ```bash
-python3 scripts/render_animation.py --frames-only --output-dir output/demo_frames
-python3 scripts/render_animation.py --exports svg --output output/demo.svg
-python3 scripts/render_animation.py --exports gif mp4 --output output/demo
-python3 scripts/render_animation.py --output-dir output/demo_frames
+kwc --input examples/simple_keyframes.csv --frames-only --output-dir output/demo_frames
+kwc --input examples/simple_keyframes.csv --exports svg --output output/demo.svg
+kwc --input examples/simple_keyframes.csv --exports gif mp4 --output output/demo
+kwc --input examples/simple_keyframes.csv --output-dir output/demo_frames
 ```
 
 When multiple export formats are selected, `--output` is treated as a filename
-stem and the script appends `.gif`, `.mp4`, or `.svg`.
+stem and the CLI appends `.gif`, `.mp4`, or `.svg`.
 
 The default canvas is 16:9 at `1280x720`. Use `--aspect` to switch presets:
 
 ```bash
-python3 scripts/render_animation.py --aspect 1:1
-python3 scripts/render_animation.py --aspect 9:16
+kwc --input examples/simple_keyframes.csv --aspect 1:1
+kwc --input examples/simple_keyframes.csv --aspect 9:16
 ```
 
 SVG export uses the same canvas as its `viewBox`, so it scales cleanly while
@@ -163,7 +199,7 @@ keeping the selected layout aspect ratio.
 Set a custom background color:
 
 ```bash
-python3 scripts/render_animation.py --background-color '#111111'
+kwc --input examples/simple_keyframes.csv --background-color '#111111'
 ```
 
 In TOML, use `background_color = "#111111"`.
@@ -171,7 +207,7 @@ In TOML, use `background_color = "#111111"`.
 For video-editor compositing, render transparent PNG overlay frames:
 
 ```bash
-python3 scripts/render_animation.py \
+kwc --input examples/simple_keyframes.csv \
   --frames-only \
   --background-color transparent \
   --output-dir output/overlay_frames
@@ -187,7 +223,7 @@ workflow.
 Add a per-word raster bloom effect:
 
 ```bash
-python3 scripts/render_animation.py --exports gif mp4 --background-color '#111111' --bloom
+kwc --input examples/simple_keyframes.csv --exports gif mp4 --background-color '#111111' --bloom
 ```
 
 Bloom radius scales with each word's current animated font size, so growing
@@ -210,7 +246,7 @@ explicit. Use `--bloom-color white` for a brighter white halo behind colored
 words:
 
 ```bash
-python3 scripts/render_animation.py --exports gif mp4 --background-color '#111111' --bloom --bloom-color white
+kwc --input examples/simple_keyframes.csv --exports gif mp4 --background-color '#111111' --bloom --bloom-color white
 ```
 
 In TOML, use either `bloom = true` for defaults or a `[bloom]` table:
@@ -236,13 +272,13 @@ export ignores the bloom settings for now.
 Render with a different input CSV:
 
 ```bash
-python3 scripts/render_animation.py --input examples/bioit_top_terms_2016_2026.csv
+kwc --input examples/bioit_top_terms_2016_2026.csv
 ```
 
 Keep segment renders on a shared value scale:
 
 ```bash
-python3 scripts/render_animation.py --size-max-value 1.0
+kwc --input examples/simple_keyframes.csv --size-max-value 1.0
 ```
 
 By default, each CSV is sized relative to its own largest value. Use
@@ -254,7 +290,7 @@ physics calculations. In TOML, use `size_max_value = 1.0`.
 Use a TOML config file instead of repeating CLI parameters:
 
 ```bash
-python3 scripts/render_animation.py --config examples/bioit_svg_config.toml
+kwc --config examples/bioit_svg_config.toml
 ```
 
 CLI flags override config-file settings. For example, `--exports svg mp4`
@@ -264,16 +300,19 @@ Config files are TOML. The CLI loads the config through the package-level render
 config helpers before calling the rendering and export modules. Export formats
 use the same list shape in config and the CLI: `exports = ["svg", "mp4"]`,
 `exports = ["frames"]`, `--exports svg mp4`, or `--exports svg,mp4`.
+Relative paths in a config file are resolved from the config file's directory.
+Without a config file, relative paths are resolved from the current working
+directory.
 
 Choose deterministic color behavior:
 
 ```bash
-python3 scripts/render_animation.py --palette okabe-ito --color-by group
-python3 scripts/render_animation.py --palette-file examples/palette_bioit.hex --color-by word
-python3 scripts/render_animation.py --color-by single --default-color '#222222'
-python3 scripts/render_animation.py --color-by absolutechange --interpolation rapid25
-python3 scripts/render_animation.py --color-by scaledchange --scaledchange-colors '#C81D25,#F7C548,#00A676'
-python3 scripts/render_animation.py --group-color 'design=#2A9D8F' --group-color 'motion=#4A2C7A'
+kwc --input examples/simple_keyframes.csv --palette okabe-ito --color-by group
+kwc --input examples/simple_keyframes.csv --palette-file examples/palette_bioit.hex --color-by word
+kwc --input examples/simple_keyframes.csv --color-by single --default-color '#222222'
+kwc --input examples/simple_keyframes.csv --color-by absolutechange --interpolation rapid25
+kwc --input examples/simple_keyframes.csv --color-by scaledchange --scaledchange-colors '#C81D25,#F7C548,#00A676'
+kwc --input examples/simple_keyframes.csv --group-color 'design=#2A9D8F' --group-color 'motion=#4A2C7A'
 ```
 
 Available palettes are `default`, `tableau`, and `okabe-ito`. `color_by` can be
@@ -301,7 +340,7 @@ The default colors are growth `#2EAD4D`, decline `#D62828`, and no-change
 Configure absolute-change colors on the CLI:
 
 ```bash
-python3 scripts/render_animation.py \
+kwc --input examples/simple_keyframes.csv \
   --color-by absolutechange \
   --absolutechange-growth-color '#00A676' \
   --absolutechange-decline-color '#C81D25' \
@@ -329,7 +368,7 @@ The default color scale is `["#D62828", "#F2C94C", "#2EAD4D"]`.
 Configure scaled-change colors on the CLI:
 
 ```bash
-python3 scripts/render_animation.py \
+kwc --input examples/simple_keyframes.csv \
   --color-by scaledchange \
   --scaledchange-colors '#C81D25,#F7C548,#00A676'
 ```
@@ -370,7 +409,7 @@ are common palette exchange formats, but they are not supported yet.
 Render keyframe labels as an overlay:
 
 ```bash
-python3 scripts/render_animation.py --label-mode keyframe --label-position top-left
+kwc --input examples/simple_keyframes.csv --label-mode keyframe --label-position top-left
 ```
 
 The first label mode uses the table's frame labels, such as `2016`, `2017`,
@@ -380,7 +419,7 @@ word-cloud placement or physics.
 Render the same sequence with the lightweight physics solver enabled:
 
 ```bash
-python3 scripts/render_animation.py --physics
+kwc --input examples/simple_keyframes.csv --physics
 ```
 
 The physics path writes to `output/physics_frames/`.
@@ -392,8 +431,8 @@ bodies.
 Export GIF and MP4 outputs:
 
 ```bash
-python3 scripts/render_animation.py --exports gif mp4
-python3 scripts/render_animation.py --physics --exports gif mp4
+kwc --input examples/simple_keyframes.csv --exports gif mp4
+kwc --input examples/simple_keyframes.csv --physics --exports gif mp4
 ```
 
 GIF export uses Pillow. MP4 export uses the local `ffmpeg` binary.
@@ -401,32 +440,32 @@ The default playback rate is 12 fps. Use `--fps` for playback rate and
 `--frames-per-transition` for interpolation density:
 
 ```bash
-python3 scripts/render_animation.py --exports gif --fps 12 --frames-per-transition 24
+kwc --input examples/simple_keyframes.csv --exports gif --fps 12 --frames-per-transition 24
 ```
 
 You can also set total duration or per-transition duration. In duration mode,
 `--fps` becomes the target frame rate, still defaulting to 12 fps, and the
-script calculates the rendered frames per transition:
+the renderer calculates the rendered frames per transition:
 
 ```bash
-python3 scripts/render_animation.py --exports gif --total-duration 6 --fps 24
-python3 scripts/render_animation.py --exports mp4 --seconds-per-transition 2 --fps 24
+kwc --input examples/simple_keyframes.csv --exports gif --total-duration 6 --fps 24
+kwc --input examples/simple_keyframes.csv --exports mp4 --seconds-per-transition 2 --fps 24
 ```
 
-The script nudges the effective FPS when needed so the animation lands exactly
+The renderer nudges the effective FPS when needed so the animation lands exactly
 on each keyframe and still matches the requested duration.
 
 Choose how values move between keyframes:
 
 ```bash
-python3 scripts/render_animation.py --interpolation linear
-python3 scripts/render_animation.py --interpolation smoothstep
-python3 scripts/render_animation.py --interpolation rapid25
-python3 scripts/render_animation.py --interpolation rapid50
-python3 scripts/render_animation.py --interpolation bounce
-python3 scripts/render_animation.py --interpolation elastic
-python3 scripts/render_animation.py --interpolation catmull-rom
-python3 scripts/render_animation.py --interpolation monotone-cubic
+kwc --input examples/simple_keyframes.csv --interpolation linear
+kwc --input examples/simple_keyframes.csv --interpolation smoothstep
+kwc --input examples/simple_keyframes.csv --interpolation rapid25
+kwc --input examples/simple_keyframes.csv --interpolation rapid50
+kwc --input examples/simple_keyframes.csv --interpolation bounce
+kwc --input examples/simple_keyframes.csv --interpolation elastic
+kwc --input examples/simple_keyframes.csv --interpolation catmull-rom
+kwc --input examples/simple_keyframes.csv --interpolation monotone-cubic
 ```
 
 `linear` changes values at a constant rate. `smoothstep` eases in and out of
@@ -449,8 +488,8 @@ simple segment-local behavior matters most.
 Export sampled animated SVG:
 
 ```bash
-python3 scripts/render_animation.py --exports svg
-python3 scripts/render_animation.py --physics --exports svg
+kwc --input examples/simple_keyframes.csv --exports svg
+kwc --input examples/simple_keyframes.csv --physics --exports svg
 ```
 
 SVG export writes browser-playable SMIL animation to `output/fixed_animation.svg`
