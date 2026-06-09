@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pandas as pd
 import pytest
+from PIL import Image
 
 import kinematic_word_cloud.scenes as scene_module
 from kinematic_word_cloud.api import RenderOptions, render_animation
@@ -228,6 +229,153 @@ def test_scene_render_keeps_visible_boundary_word_center(tmp_path, monkeypatch) 
     assert chorus_first["centers"]["python"] == pytest.approx(
         intro_final["centers"]["python"]
     )
+
+
+def test_scene_render_composites_png_image_item(tmp_path) -> None:
+    asset_path = tmp_path / "sprite.png"
+    tall_asset_path = tmp_path / "tall.png"
+    Image.new("RGBA", (10, 5), (255, 0, 0, 255)).save(asset_path)
+    Image.new("RGBA", (10, 40), (0, 0, 255, 255)).save(tall_asset_path)
+    dataframe = pd.DataFrame(
+        [
+            {
+                "scene": "intro",
+                "id": "anchor",
+                "word": "anchor",
+                "type": "text",
+                "asset": "",
+                "asset_scale": "",
+                "layer": "",
+                "x": 0.10,
+                "y": 0.10,
+                "s001": 0.5,
+                "s002": 0.5,
+            },
+            {
+                "scene": "intro",
+                "id": "sprite",
+                "word": "",
+                "type": "image",
+                "asset": "sprite.png",
+                "asset_scale": 0.25,
+                "layer": "front",
+                "x": 0.50,
+                "y": 0.50,
+                "s001": 0,
+                "s002": 1,
+            },
+            {
+                "scene": "intro",
+                "id": "tall",
+                "word": "",
+                "type": "image",
+                "asset": "tall.png",
+                "asset_scale": 0.25,
+                "layer": "back",
+                "x": 0.80,
+                "y": 0.50,
+                "s001": 0,
+                "s002": 1,
+            },
+        ]
+    )
+    scene_data = from_scene_dataframe(
+        dataframe,
+        scene_starts={"intro": "s001"},
+        source=tmp_path / "scene.csv",
+    )
+
+    frame_paths, scene_info = render_scene_animation_frames(
+        scene_data,
+        tmp_path / "frames",
+        frames_per_transition=1,
+        width=120,
+        height=80,
+        random_state=3,
+    )
+
+    assert scene_data.scenes[0].image_items[0].asset_path == asset_path
+    assert scene_data.scenes[0].image_items[0].layer == "front"
+    assert scene_data.scenes[0].image_items[1].layer == "back"
+    assert scene_info[0].centers_by_id["sprite"] == pytest.approx((60, 40))
+    assert scene_info[0].peak_sizes_by_id["sprite"] == (30, 15)
+    assert scene_info[0].peak_sizes_by_id["tall"] == (5, 20)
+    final_frame = Image.open(frame_paths[-1]).convert("RGBA")
+    assert final_frame.getpixel((60, 40))[:3] == (255, 0, 0)
+
+
+def test_scene_parser_rejects_image_without_explicit_id(tmp_path) -> None:
+    asset_path = tmp_path / "sprite.png"
+    Image.new("RGBA", (10, 10), (255, 0, 0, 255)).save(asset_path)
+    dataframe = pd.DataFrame(
+        [
+            {
+                "scene": "intro",
+                "id": "anchor",
+                "word": "anchor",
+                "type": "text",
+                "asset": "",
+                "s001": 1,
+                "s002": 1,
+            },
+            {
+                "scene": "intro",
+                "id": "",
+                "word": "",
+                "type": "image",
+                "asset": "sprite.png",
+                "x": 0.50,
+                "y": 0.50,
+                "s001": 0,
+                "s002": 1,
+            },
+        ]
+    )
+
+    with pytest.raises(KeyframeDataError, match="explicit id"):
+        from_scene_dataframe(
+            dataframe,
+            scene_starts={"intro": "s001"},
+            source=tmp_path / "scene.csv",
+        )
+
+
+def test_scene_parser_rejects_invalid_image_layer(tmp_path) -> None:
+    asset_path = tmp_path / "sprite.png"
+    Image.new("RGBA", (10, 10), (255, 0, 0, 255)).save(asset_path)
+    dataframe = pd.DataFrame(
+        [
+            {
+                "scene": "intro",
+                "id": "anchor",
+                "word": "anchor",
+                "type": "text",
+                "asset": "",
+                "layer": "",
+                "s001": 1,
+                "s002": 1,
+            },
+            {
+                "scene": "intro",
+                "id": "sprite",
+                "word": "",
+                "type": "image",
+                "asset": "sprite.png",
+                "layer": "middle",
+                "x": 0.50,
+                "y": 0.50,
+                "s001": 0,
+                "s002": 1,
+            },
+        ]
+    )
+
+    with pytest.raises(KeyframeDataError, match="Image layer"):
+        from_scene_dataframe(
+            dataframe,
+            scene_starts={"intro": "s001"},
+            source=tmp_path / "scene.csv",
+        )
 
 
 def test_scene_mode_rejects_svg_export(tmp_path) -> None:

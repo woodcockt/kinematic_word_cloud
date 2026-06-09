@@ -8,6 +8,7 @@ from math import floor
 from pathlib import Path
 
 import pandas as pd
+from PIL import Image
 
 from .change_color import max_absolute_change
 from .config import (
@@ -33,6 +34,7 @@ from .labels import LabelConfig, label_for_frame
 from .layout import ABSOLUTECHANGE_COLOR_BY, ColorOptions, SCALEDCHANGE_COLOR_BY
 from .physics import PhysicsConfig, PhysicsSimulator, WordBodySpec
 from .render import (
+    ImageFrameItem,
     _build_size_reference_layout,
     _clear_animation_frames,
     _clamp_values_to_size_max,
@@ -40,7 +42,7 @@ from .render import (
     _measure_peak_sizes,
     render_fixed_frame,
 )
-from .timeline import DEFAULT_INTERPOLATION, iter_timeline_frames
+from .timeline import DEFAULT_INTERPOLATION, interpolate_values, iter_timeline_frames
 
 
 GLOBAL_LAYOUT_MODE = "global"
@@ -51,6 +53,28 @@ DEFAULT_SCENE_COLUMN = "scene"
 DEFAULT_ID_COLUMN = "id"
 DEFAULT_X_COLUMN = "x"
 DEFAULT_Y_COLUMN = "y"
+DEFAULT_TYPE_COLUMN = "type"
+DEFAULT_ASSET_COLUMN = "asset"
+DEFAULT_ASSET_SCALE_COLUMN = "asset_scale"
+DEFAULT_LAYER_COLUMN = "layer"
+TEXT_ITEM_TYPE = "text"
+IMAGE_ITEM_TYPE = "image"
+ITEM_TYPES: tuple[str, ...] = (TEXT_ITEM_TYPE, IMAGE_ITEM_TYPE)
+FRONT_IMAGE_LAYER = "front"
+BACK_IMAGE_LAYER = "back"
+IMAGE_LAYERS: tuple[str, ...] = (FRONT_IMAGE_LAYER, BACK_IMAGE_LAYER)
+RASTER_IMAGE_SUFFIXES: tuple[str, ...] = (".png", ".jpg", ".jpeg", ".webp")
+
+
+@dataclass(frozen=True)
+class SceneImageItem:
+    """A static raster image item in one scene."""
+
+    item_id: str
+    asset_path: Path
+    asset_scale: float
+    layer: str = FRONT_IMAGE_LAYER
+    position: tuple[float, float] | None = None
 
 
 @dataclass(frozen=True)
@@ -65,6 +89,8 @@ class SceneSlice:
     table: KeyframeTable
     ids_by_word: dict[str, str]
     positions_by_word: dict[str, tuple[float, float]]
+    image_values: pd.DataFrame
+    image_items: tuple[SceneImageItem, ...] = ()
 
     @property
     def frames(self) -> list[str]:
@@ -132,6 +158,10 @@ def load_scene_keyframes(
     group_column: str = DEFAULT_GROUP_COLUMN,
     x_column: str = DEFAULT_X_COLUMN,
     y_column: str = DEFAULT_Y_COLUMN,
+    type_column: str = DEFAULT_TYPE_COLUMN,
+    asset_column: str = DEFAULT_ASSET_COLUMN,
+    asset_scale_column: str = DEFAULT_ASSET_SCALE_COLUMN,
+    layer_column: str = DEFAULT_LAYER_COLUMN,
 ) -> SceneKeyframeData:
     """Load a wide scene keyframe table from disk."""
 
@@ -156,6 +186,10 @@ def load_scene_keyframes(
         group_column=group_column,
         x_column=x_column,
         y_column=y_column,
+        type_column=type_column,
+        asset_column=asset_column,
+        asset_scale_column=asset_scale_column,
+        layer_column=layer_column,
         source=source,
     )
 
@@ -171,6 +205,10 @@ def from_scene_dataframe(
     group_column: str = DEFAULT_GROUP_COLUMN,
     x_column: str = DEFAULT_X_COLUMN,
     y_column: str = DEFAULT_Y_COLUMN,
+    type_column: str = DEFAULT_TYPE_COLUMN,
+    asset_column: str = DEFAULT_ASSET_COLUMN,
+    asset_scale_column: str = DEFAULT_ASSET_SCALE_COLUMN,
+    layer_column: str = DEFAULT_LAYER_COLUMN,
     source: str | Path | None = None,
 ) -> SceneKeyframeData:
     """Normalize a single wide CSV into per-scene keyframe tables."""
@@ -188,6 +226,10 @@ def from_scene_dataframe(
     group_column = _clean_column_name(group_column)
     x_column = _clean_column_name(x_column)
     y_column = _clean_column_name(y_column)
+    type_column = _clean_column_name(type_column)
+    asset_column = _clean_column_name(asset_column)
+    asset_scale_column = _clean_column_name(asset_scale_column)
+    layer_column = _clean_column_name(layer_column)
 
     for required_column in (scene_column, word_column):
         if required_column not in normalized.columns:
@@ -203,6 +245,10 @@ def from_scene_dataframe(
         group_column,
         x_column,
         y_column,
+        type_column,
+        asset_column,
+        asset_scale_column,
+        layer_column,
     }
     frame_columns = [
         column for column in normalized.columns if column not in metadata_columns
@@ -224,11 +270,21 @@ def from_scene_dataframe(
             + ", ".join(unknown_scenes)
         )
 
+    item_types = _read_item_types(normalized, type_column)
     words = normalized[word_column].map(_clean_word)
-    if words.isna().any():
-        raise KeyframeDataError("Word column contains blank or missing values.")
-    ids = _read_ids(normalized, words, id_column)
-    positions = _read_positions(normalized, words, x_column, y_column)
+    if words.loc[item_types == TEXT_ITEM_TYPE].isna().any():
+        raise KeyframeDataError("Text rows must contain word values.")
+    assets = _read_assets(
+        normalized,
+        item_types,
+        words,
+        asset_column,
+        source=source,
+    )
+    ids = _read_ids(normalized, words, item_types, id_column)
+    positions = _read_positions(normalized, ids, x_column, y_column)
+    asset_scales = _read_asset_scales(normalized, item_types, asset_scale_column)
+    image_layers = _read_image_layers(normalized, item_types, layer_column)
     values = normalized.loc[:, frame_columns].apply(pd.to_numeric, errors="coerce")
     if values.isna().any().any():
         bad_columns = values.columns[values.isna().any()].tolist()
@@ -251,12 +307,13 @@ def from_scene_dataframe(
                 f"Scene {scene_name!r} must cover at least two frame labels."
             )
 
-        scene_words = words.loc[scene_mask].tolist()
         scene_ids = ids.loc[scene_mask].tolist()
         _validate_unique(scene_ids, label=f"id in scene {scene_name!r}")
+        text_mask = scene_mask & (item_types == TEXT_ITEM_TYPE)
+        image_mask = scene_mask & (item_types == IMAGE_ITEM_TYPE)
 
         scene_dataframe = normalized.loc[
-            scene_mask,
+            text_mask,
             [
                 column
                 for column in (
@@ -268,6 +325,10 @@ def from_scene_dataframe(
                 if column in normalized.columns
             ],
         ].copy()
+        if scene_dataframe.empty:
+            raise KeyframeDataError(
+                f"Scene {scene_name!r} must contain at least one text row."
+            )
         table = from_wide_dataframe(
             scene_dataframe,
             word_column=word_column,
@@ -277,17 +338,41 @@ def from_scene_dataframe(
         )
         ids_by_word = {
             str(word): str(row_id)
-            for word, row_id in zip(scene_words, scene_ids, strict=True)
+            for word, row_id in zip(
+                words.loc[text_mask].tolist(),
+                ids.loc[text_mask].tolist(),
+                strict=True,
+            )
         }
         positions_by_word = {
             str(word): position
             for word, position in zip(
-                scene_words,
-                positions.loc[scene_mask].tolist(),
+                words.loc[text_mask].tolist(),
+                positions.loc[text_mask].tolist(),
                 strict=True,
             )
             if position is not None
         }
+        image_values = values.loc[image_mask, scene_frame_columns].copy()
+        image_values.index = ids.loc[image_mask].tolist()
+        image_items = tuple(
+            SceneImageItem(
+                item_id=str(row_id),
+                asset_path=asset,
+                asset_scale=float(asset_scale),
+                layer=str(layer),
+                position=position,
+            )
+            for row_id, asset, asset_scale, layer, position in zip(
+                ids.loc[image_mask].tolist(),
+                assets.loc[image_mask].tolist(),
+                asset_scales.loc[image_mask].tolist(),
+                image_layers.loc[image_mask].tolist(),
+                positions.loc[image_mask].tolist(),
+                strict=True,
+            )
+            if asset is not None
+        )
         scene_slices.append(
             SceneSlice(
                 name=scene_name,
@@ -298,6 +383,8 @@ def from_scene_dataframe(
                 table=table,
                 ids_by_word=ids_by_word,
                 positions_by_word=positions_by_word,
+                image_values=image_values.astype(float),
+                image_items=image_items,
             )
         )
 
@@ -416,6 +503,7 @@ def render_scene_animation_frames(
     frame_paths: list[Path] = []
     scene_infos: list[SceneRenderInfo] = []
     carryover_centers_by_id: dict[str, tuple[float, float]] = {}
+    image_cache: dict[Path, Image.Image] = {}
     color_by_absolutechange = (
         color_options is not None
         and color_options.color_by == ABSOLUTECHANGE_COLOR_BY
@@ -456,12 +544,26 @@ def render_scene_animation_frames(
             width=width,
             height=height,
         )
+        image_peak_values = _image_peak_values(scene, size_max_value)
+        image_peak_sizes = _measure_image_peak_sizes(
+            scene,
+            image_cache=image_cache,
+            canvas_size=(width, height),
+        )
+        resolved_image_centers = _resolve_scene_image_centers(
+            scene,
+            carryover_centers_by_id=carryover_centers_by_id,
+            width=width,
+            height=height,
+        )
         simulator = (
             _build_scene_physics_simulator(
                 scene,
                 layout=layout,
                 peak_sizes=peak_sizes,
                 centers=resolved_centers,
+                image_peak_sizes=image_peak_sizes,
+                image_centers=resolved_image_centers,
                 canvas_size=(width, height),
                 config=physics_config,
             )
@@ -470,6 +572,7 @@ def render_scene_animation_frames(
         )
         scene_start_frame_index = len(frame_paths)
         last_centers = resolved_centers
+        last_image_centers = resolved_image_centers
 
         for frame in iter_timeline_frames(
             scene.table,
@@ -481,12 +584,38 @@ def render_scene_animation_frames(
                 frame.values,
                 size_max_value,
             )
+            image_values = _frame_image_values(
+                scene,
+                frame.position,
+                interpolation=interpolation,
+            )
+            image_physics_values = _clamp_values_to_size_max(
+                image_values,
+                size_max_value,
+            )
+            combined_physics_values = {
+                **physics_values,
+                **image_physics_values,
+            }
+            combined_peak_values = {
+                **size_reference_values,
+                **image_peak_values,
+            }
             centers = (
-                simulator.step(physics_values, size_reference_values)
+                simulator.step(combined_physics_values, combined_peak_values)
                 if simulator is not None
                 else resolved_centers
             )
             last_centers = centers
+            image_centers = (
+                {
+                    image_item.item_id: centers[image_item.item_id]
+                    for image_item in scene.image_items
+                }
+                if simulator is not None
+                else resolved_image_centers
+            )
+            last_image_centers = image_centers
             change_start_values = (
                 scene.table.frame_values(frame.start_keyframe)
                 if uses_transition_colors
@@ -514,6 +643,14 @@ def render_scene_animation_frames(
                 scaledchange_max_absolute_change=scaledchange_max_absolute_change,
                 size_reference_values=size_reference_values,
                 size_max_value=size_max_value,
+                image_items=_frame_image_items(
+                    scene,
+                    image_values=image_values,
+                    image_peak_values=image_peak_values,
+                    image_peak_sizes=image_peak_sizes,
+                    image_centers=image_centers,
+                    image_cache=image_cache,
+                ),
             )
             frame_paths.append(frame_path)
 
@@ -521,10 +658,20 @@ def render_scene_animation_frames(
             scene.ids_by_word[word]: last_centers.get(word, resolved_centers[word])
             for word in scene.table.words
         }
+        centers_by_id.update(
+            {
+                image_item.item_id: last_image_centers.get(
+                    image_item.item_id,
+                    resolved_image_centers[image_item.item_id],
+                )
+                for image_item in scene.image_items
+            }
+        )
         peak_sizes_by_id = {
             scene.ids_by_word[word]: peak_sizes[word]
             for word in scene.table.words
         }
+        peak_sizes_by_id.update(image_peak_sizes)
         carryover_centers_by_id.update(centers_by_id)
         scene_infos.append(
             SceneRenderInfo(
@@ -588,22 +735,167 @@ def _scene_ranges(
     return ranges
 
 
+def _read_item_types(dataframe: pd.DataFrame, type_column: str) -> pd.Series:
+    if type_column not in dataframe.columns:
+        return pd.Series(
+            [TEXT_ITEM_TYPE for _ in dataframe.index],
+            index=dataframe.index,
+        )
+
+    item_types: list[str] = []
+    for raw_type in dataframe[type_column]:
+        item_type = _clean_optional_text(raw_type) or TEXT_ITEM_TYPE
+        item_type = item_type.lower()
+        if item_type not in ITEM_TYPES:
+            raise KeyframeDataError(
+                "Item type must be one of: " + ", ".join(ITEM_TYPES)
+            )
+        item_types.append(item_type)
+    return pd.Series(item_types, index=dataframe.index)
+
+
+def _read_assets(
+    dataframe: pd.DataFrame,
+    item_types: pd.Series,
+    words: pd.Series,
+    asset_column: str,
+    *,
+    source: str | Path | None,
+) -> pd.Series:
+    if asset_column not in dataframe.columns:
+        if bool((item_types == IMAGE_ITEM_TYPE).any()):
+            raise KeyframeDataError("Image rows require an asset column.")
+        return pd.Series([None for _ in dataframe.index], index=dataframe.index)
+
+    base_dir = _asset_base_dir(source)
+    assets: list[Path | None] = []
+    for item_type, word, raw_asset in zip(
+        item_types,
+        words,
+        dataframe[asset_column],
+        strict=True,
+    ):
+        asset_text = _clean_optional_text(raw_asset)
+        if item_type == TEXT_ITEM_TYPE:
+            assets.append(None)
+            continue
+        if asset_text is None:
+            raise KeyframeDataError(f"Image item {word!r} requires an asset path.")
+
+        asset_path = Path(asset_text)
+        if not asset_path.is_absolute():
+            asset_path = base_dir / asset_path
+        if asset_path.suffix.lower() not in RASTER_IMAGE_SUFFIXES:
+            raise KeyframeDataError(
+                f"Unsupported image asset format for {asset_text!r}. "
+                "Expected one of: " + ", ".join(RASTER_IMAGE_SUFFIXES)
+            )
+        if not asset_path.exists():
+            raise KeyframeDataError(f"Image asset not found: {asset_path}")
+        assets.append(asset_path)
+    return pd.Series(assets, index=dataframe.index)
+
+
 def _read_ids(
     dataframe: pd.DataFrame,
     words: pd.Series,
+    item_types: pd.Series,
     id_column: str,
 ) -> pd.Series:
-    if id_column not in dataframe.columns:
-        return words.astype(str)
-
-    ids = dataframe[id_column].map(_clean_optional_text)
-    return pd.Series(
-        [
-            str(row_id) if row_id is not None else str(word)
-            for row_id, word in zip(ids, words, strict=True)
-        ],
-        index=dataframe.index,
+    raw_ids = (
+        dataframe[id_column].map(_clean_optional_text)
+        if id_column in dataframe.columns
+        else pd.Series([None for _ in dataframe.index], index=dataframe.index)
     )
+
+    ids: list[str] = []
+    for raw_id, word, item_type in zip(
+        raw_ids,
+        words,
+        item_types,
+        strict=True,
+    ):
+        if raw_id is not None:
+            ids.append(str(raw_id))
+        elif item_type == IMAGE_ITEM_TYPE:
+            raise KeyframeDataError("Image rows require explicit id values.")
+        elif word is not None:
+            ids.append(str(word))
+        else:
+            raise KeyframeDataError("Rows require id or word values.")
+
+    return pd.Series(ids, index=dataframe.index)
+
+
+def _read_asset_scales(
+    dataframe: pd.DataFrame,
+    item_types: pd.Series,
+    asset_scale_column: str,
+) -> pd.Series:
+    if asset_scale_column not in dataframe.columns:
+        return pd.Series([1.0 for _ in dataframe.index], index=dataframe.index)
+
+    scales: list[float] = []
+    for item_type, raw_scale in zip(
+        item_types,
+        dataframe[asset_scale_column],
+        strict=True,
+    ):
+        if item_type == TEXT_ITEM_TYPE:
+            scales.append(1.0)
+            continue
+        scale_text = _clean_optional_text(raw_scale)
+        if scale_text is None:
+            scales.append(1.0)
+            continue
+        try:
+            scale = float(scale_text)
+        except ValueError as exc:
+            raise KeyframeDataError("asset_scale must be numeric.") from exc
+        if scale <= 0:
+            raise KeyframeDataError("asset_scale must be greater than zero.")
+        scales.append(scale)
+
+    return pd.Series(scales, index=dataframe.index)
+
+
+def _read_image_layers(
+    dataframe: pd.DataFrame,
+    item_types: pd.Series,
+    layer_column: str,
+) -> pd.Series:
+    if layer_column not in dataframe.columns:
+        return pd.Series(
+            [
+                FRONT_IMAGE_LAYER if item_type == IMAGE_ITEM_TYPE else None
+                for item_type in item_types
+            ],
+            index=dataframe.index,
+        )
+
+    layers: list[str | None] = []
+    for item_type, raw_layer in zip(
+        item_types,
+        dataframe[layer_column],
+        strict=True,
+    ):
+        if item_type == TEXT_ITEM_TYPE:
+            layers.append(None)
+            continue
+        layer = (_clean_optional_text(raw_layer) or FRONT_IMAGE_LAYER).lower()
+        if layer not in IMAGE_LAYERS:
+            raise KeyframeDataError(
+                "Image layer must be one of: " + ", ".join(IMAGE_LAYERS)
+            )
+        layers.append(layer)
+
+    return pd.Series(layers, index=dataframe.index)
+
+
+def _asset_base_dir(source: str | Path | None) -> Path:
+    if source is None:
+        return Path.cwd()
+    return Path(source).parent
 
 
 def _read_positions(
@@ -671,12 +963,138 @@ def _resolve_scene_centers(
     return centers
 
 
+def _resolve_scene_image_centers(
+    scene: SceneSlice,
+    *,
+    carryover_centers_by_id: Mapping[str, tuple[float, float]],
+    width: int,
+    height: int,
+) -> dict[str, tuple[float, float]]:
+    centers: dict[str, tuple[float, float]] = {}
+    for image_item in scene.image_items:
+        if image_item.position is not None:
+            x, y = image_item.position
+            centers[image_item.item_id] = (x * width, y * height)
+        elif image_item.item_id in carryover_centers_by_id:
+            centers[image_item.item_id] = carryover_centers_by_id[image_item.item_id]
+        else:
+            raise KeyframeDataError(
+                f"Image item {image_item.item_id!r} requires x/y unless it "
+                "inherits a position from an earlier scene."
+            )
+    return centers
+
+
+def _image_peak_values(
+    scene: SceneSlice,
+    size_max_value: float | None,
+) -> dict[str, float]:
+    if scene.image_values.empty:
+        return {}
+
+    values = {
+        str(item_id): float(value)
+        for item_id, value in scene.image_values.max(axis=1).items()
+    }
+    if size_max_value is None:
+        return values
+    return {
+        item_id: min(value, size_max_value) if value > 0 else 0.0
+        for item_id, value in values.items()
+    }
+
+
+def _frame_image_values(
+    scene: SceneSlice,
+    position: float,
+    *,
+    interpolation: str,
+) -> dict[str, float]:
+    if scene.image_values.empty:
+        return {}
+
+    image_table = KeyframeTable(values=scene.image_values, source=scene.table.source)
+    return interpolate_values(image_table, position, interpolation=interpolation)
+
+
+def _measure_image_peak_sizes(
+    scene: SceneSlice,
+    *,
+    image_cache: dict[Path, Image.Image],
+    canvas_size: tuple[int, int],
+) -> dict[str, tuple[int, int]]:
+    sizes: dict[str, tuple[int, int]] = {}
+    for image_item in scene.image_items:
+        image = _load_image_asset(image_item.asset_path, image_cache=image_cache)
+        sizes[image_item.item_id] = _responsive_image_peak_size(
+            image,
+            asset_scale=image_item.asset_scale,
+            canvas_size=canvas_size,
+        )
+    return sizes
+
+
+def _frame_image_items(
+    scene: SceneSlice,
+    *,
+    image_values: Mapping[str, float],
+    image_peak_values: Mapping[str, float],
+    image_peak_sizes: Mapping[str, tuple[int, int]],
+    image_centers: Mapping[str, tuple[float, float]],
+    image_cache: dict[Path, Image.Image],
+) -> tuple[ImageFrameItem, ...]:
+    frame_items: list[ImageFrameItem] = []
+    for image_item in scene.image_items:
+        frame_items.append(
+            ImageFrameItem(
+                item_id=image_item.item_id,
+                image=_load_image_asset(image_item.asset_path, image_cache=image_cache),
+                center=image_centers[image_item.item_id],
+                current_value=float(image_values.get(image_item.item_id, 0.0)),
+                peak_value=float(image_peak_values.get(image_item.item_id, 0.0)),
+                peak_size=image_peak_sizes[image_item.item_id],
+                layer=image_item.layer,
+            )
+        )
+    return tuple(frame_items)
+
+
+def _responsive_image_peak_size(
+    image: Image.Image,
+    *,
+    asset_scale: float,
+    canvas_size: tuple[int, int],
+) -> tuple[int, int]:
+    canvas_width, canvas_height = canvas_size
+    max_width = max(1.0, canvas_width * asset_scale)
+    max_height = max(1.0, canvas_height * asset_scale)
+    scale = min(max_width / image.width, max_height / image.height)
+    width = max(1, int(round(image.width * scale)))
+    height = max(1, int(round(image.height * scale)))
+    return width, height
+
+
+def _load_image_asset(
+    path: Path,
+    *,
+    image_cache: dict[Path, Image.Image],
+) -> Image.Image:
+    if path not in image_cache:
+        try:
+            image_cache[path] = Image.open(path).convert("RGBA")
+        except OSError as exc:
+            raise KeyframeDataError(f"Could not load image asset: {path}") from exc
+    return image_cache[path]
+
+
 def _build_scene_physics_simulator(
     scene: SceneSlice,
     *,
     layout,
     peak_sizes: Mapping[str, tuple[int, int]],
     centers: Mapping[str, tuple[float, float]],
+    image_peak_sizes: Mapping[str, tuple[int, int]],
+    image_centers: Mapping[str, tuple[float, float]],
     canvas_size: tuple[int, int],
     config: PhysicsConfig | None,
 ) -> PhysicsSimulator:
@@ -689,6 +1107,14 @@ def _build_scene_physics_simulator(
         for word_layout in layout.words
         if word_layout.word in scene.ids_by_word
     ]
+    specs.extend(
+        WordBodySpec(
+            word=image_item.item_id,
+            anchor=image_centers[image_item.item_id],
+            peak_size=image_peak_sizes[image_item.item_id],
+        )
+        for image_item in scene.image_items
+    )
     return PhysicsSimulator(specs, canvas_size=canvas_size, config=config)
 
 

@@ -311,8 +311,8 @@ kwc --config examples/scene_config.toml
 ```
 
 Scene mode uses a single wide CSV with global frame columns plus `scene`, `word`,
-and optional `id`, `color`, `group`, `x`, and `y` columns. Define the scene cuts
-in TOML:
+and optional `id`, `type`, `asset`, `asset_scale`, `layer`, `color`, `group`,
+`x`, and `y` columns. Define the scene cuts in TOML:
 
 ```toml
 layout_mode = "scene"
@@ -322,7 +322,35 @@ scene_starts = { intro = "s001", chorus = "s004", outro = "s006" }
 Each scene is laid out from only its own rows and frame span, so sparse long
 animations stay denser than a single global layout. `id` defaults to `word` and
 is used to carry positions across scenes. Optional `x` and `y` values are
-normalized coordinates from `0` to `1`; they seed or override a word's position.
+normalized center coordinates from `0` to `1`; they seed or override a word or
+image item's position.
+
+Scene mode can also render static image assets as animated cloud items. Use
+`type = "image"` with explicit `id` and `asset` values:
+
+```csv
+scene,id,word,type,asset,asset_scale,layer,x,y,s001,s002
+chorus,logo,,image,logo.png,0.25,front,0.50,0.55,0,1
+```
+
+PNG, JPEG, and WebP assets are supported for raster outputs; image asset paths
+are resolved relative to the CSV file. Image rows must have an explicit `id`, a
+supported `asset`, and a positive `asset_scale` when `asset_scale` is supplied.
+Image rows also need `x` and `y` unless that same `id` inherits a position from
+an earlier scene.
+
+`asset_scale` is responsive. It fits the source image inside a box whose width
+and height are that fraction of the render canvas, preserving the source aspect
+ratio. On a `1280x720` canvas, an `800x600` image with `asset_scale = 1.0`
+peaks at `960x720`; `asset_scale = 0.5` peaks at `480x360`; values above `1.0`
+are allowed and can crop at the canvas edges. The animated frame values then
+scale from zero to that peak size.
+
+Optional image `layer` values are `front` or `back`, with `front` as the
+default. `front` draws the image over the words; `back` draws it behind the
+words. Both layers still participate in physics. Run scene mode with `--physics`
+when images should participate in spacing; without physics, explicit and
+inherited centers can overlap because they override the word-cloud layout.
 Scene mode currently supports PNG frames, GIF, and MP4. SVG scene export is not
 implemented yet.
 

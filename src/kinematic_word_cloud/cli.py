@@ -38,6 +38,16 @@ from .scenes import LAYOUT_MODES, SCENE_LAYOUT_MODE
 from .timeline import INTERPOLATION_MODES
 
 
+CLI_EPILOG = """\
+Scene image assets:
+  In --layout-mode scene, CSV rows with type=image can animate static PNG,
+  JPEG, or WebP assets. Use explicit id and asset columns, optional
+  asset_scale for responsive sizing, layer=front|back for draw order, and x/y
+  center coordinates unless the id inherits a previous scene position. Use
+  --physics when image items should participate in spacing.
+"""
+
+
 def main(argv: Sequence[str] | None = None) -> None:
     """Run the Kinematic Word Cloud CLI."""
 
@@ -153,7 +163,11 @@ def main(argv: Sequence[str] | None = None) -> None:
 def build_parser() -> argparse.ArgumentParser:
     """Build the CLI argument parser."""
 
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(
+        description="Animate word clouds from tabular keyframe data.",
+        epilog=CLI_EPILOG,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     parser.add_argument(
         "--config",
         type=Path,
@@ -329,7 +343,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--layout-mode",
         choices=LAYOUT_MODES,
         default=argparse.SUPPRESS,
-        help="Layout strategy: global peak layout or per-scene layouts.",
+        help=(
+            "Layout strategy: global peak layout or per-scene layouts. "
+            "Scene CSVs may include type=image asset rows."
+        ),
     )
     parser.add_argument(
         "--scene-start",
