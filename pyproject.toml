@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "kinematic-word-cloud"
-version = "0.1.1"
+version = "0.1.2"
 description = "Animate word clouds from tabular keyframe data."
 readme = "README.md"
 requires-python = ">=3.10"
