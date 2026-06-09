@@ -25,6 +25,7 @@ class WordBodySpec:
     word: str
     anchor: tuple[float, float]
     peak_size: tuple[float, float]
+    initial_position: tuple[float, float] | None = None
 
 
 @dataclass
@@ -58,13 +59,22 @@ class PhysicsSimulator:
         self.config = config or PhysicsConfig()
         self.canvas_width = float(canvas_size[0])
         self.canvas_height = float(canvas_size[1])
+        self._locked: set[str] = set()
         self.bodies = {
             spec.word: WordBody(
                 word=spec.word,
                 anchor_x=float(spec.anchor[0]),
                 anchor_y=float(spec.anchor[1]),
-                x=float(spec.anchor[0]),
-                y=float(spec.anchor[1]),
+                x=float(
+                    spec.initial_position[0]
+                    if spec.initial_position is not None
+                    else spec.anchor[0]
+                ),
+                y=float(
+                    spec.initial_position[1]
+                    if spec.initial_position is not None
+                    else spec.anchor[1]
+                ),
                 width=float(spec.peak_size[0]),
                 height=float(spec.peak_size[1]),
                 peak_width=float(spec.peak_size[0]),
@@ -77,9 +87,12 @@ class PhysicsSimulator:
         self,
         values: Mapping[str, float],
         peak_values: Mapping[str, float],
+        *,
+        locked: set[str] | None = None,
     ) -> dict[str, tuple[float, float]]:
         """Advance the simulation and return current word centers."""
 
+        self._locked = locked or set()
         self._update_body_sizes(values, peak_values)
         for _ in range(self.config.solver_iterations):
             self._apply_anchor_forces()
@@ -87,6 +100,7 @@ class PhysicsSimulator:
             self._resolve_collisions()
             self._clamp_all_to_canvas()
 
+        self._locked = set()
         return self.centers()
 
     def centers(self) -> dict[str, tuple[float, float]]:
@@ -122,6 +136,8 @@ class PhysicsSimulator:
 
     def _apply_anchor_forces(self) -> None:
         for body in self.bodies.values():
+            if body.word in self._locked:
+                continue
             body.vx += (body.anchor_x - body.x) * self.config.anchor_strength
             body.vy += (body.anchor_y - body.y) * self.config.anchor_strength
 
@@ -136,23 +152,35 @@ class PhysicsSimulator:
             if overlap_x <= 0 or overlap_y <= 0:
                 continue
 
+            if body_a.word in self._locked and body_b.word in self._locked:
+                continue
+
+            a_locked = body_a.word in self._locked
+            b_locked = body_b.word in self._locked
+            a_share = 0.0 if a_locked else 1.0 if b_locked else 0.5
+            b_share = 0.0 if b_locked else 1.0 if a_locked else 0.5
+
             if overlap_x < overlap_y:
                 direction = 1.0 if dx >= 0 else -1.0
-                push = overlap_x * self.config.collision_strength / 2.0
-                body_a.x -= push * direction
-                body_b.x += push * direction
-                body_a.vx -= push * direction * 0.05
-                body_b.vx += push * direction * 0.05
+                push = overlap_x * self.config.collision_strength
+                body_a.x -= push * direction * a_share
+                body_b.x += push * direction * b_share
+                body_a.vx -= push * direction * 0.05 * a_share
+                body_b.vx += push * direction * 0.05 * b_share
             else:
                 direction = 1.0 if dy >= 0 else -1.0
-                push = overlap_y * self.config.collision_strength / 2.0
-                body_a.y -= push * direction
-                body_b.y += push * direction
-                body_a.vy -= push * direction * 0.05
-                body_b.vy += push * direction * 0.05
+                push = overlap_y * self.config.collision_strength
+                body_a.y -= push * direction * a_share
+                body_b.y += push * direction * b_share
+                body_a.vy -= push * direction * 0.05 * a_share
+                body_b.vy += push * direction * 0.05 * b_share
 
     def _integrate(self) -> None:
         for body in self.bodies.values():
+            if body.word in self._locked:
+                body.vx = 0.0
+                body.vy = 0.0
+                continue
             body.x += body.vx
             body.y += body.vy
             body.vx *= self.config.damping
@@ -161,6 +189,8 @@ class PhysicsSimulator:
 
     def _clamp_all_to_canvas(self) -> None:
         for body in self.bodies.values():
+            if body.word in self._locked:
+                continue
             self._clamp_to_canvas(body)
 
     def _clamp_to_canvas(self, body: WordBody) -> None:

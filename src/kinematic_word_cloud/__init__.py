@@ -23,11 +23,16 @@ from .layout import ColorOptions
 from .render_config import load_render_config
 from .scenes import (
     DEFAULT_LAYOUT_MODE,
+    DEFAULT_SCENE_POSITIONING,
+    DEFAULT_SCENE_SETTLE_STEPS,
     GLOBAL_LAYOUT_MODE,
     SCENE_LAYOUT_MODE,
+    SCENE_POSITIONING_MODES,
+    SETTLED_CENTER_SCENE_POSITIONING,
     SceneKeyframeData,
     SceneRenderInfo,
     SceneSlice,
+    WORDCLOUD_SCENE_POSITIONING,
 )
 
 __all__ = [
@@ -46,6 +51,11 @@ __all__ = [
     "DEFAULT_LAYOUT_MODE",
     "GLOBAL_LAYOUT_MODE",
     "SCENE_LAYOUT_MODE",
+    "DEFAULT_SCENE_POSITIONING",
+    "DEFAULT_SCENE_SETTLE_STEPS",
+    "SCENE_POSITIONING_MODES",
+    "SETTLED_CENTER_SCENE_POSITIONING",
+    "WORDCLOUD_SCENE_POSITIONING",
     "load_render_config",
     "load_keyframes",
     "render_animation",

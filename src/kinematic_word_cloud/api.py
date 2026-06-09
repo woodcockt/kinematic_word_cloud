@@ -24,6 +24,8 @@ from .render import render_fixed_animation_frames
 from .render_config import EXPORT_FORMATS, resolve_export_paths
 from .scenes import (
     DEFAULT_LAYOUT_MODE,
+    DEFAULT_SCENE_POSITIONING,
+    DEFAULT_SCENE_SETTLE_STEPS,
     SCENE_LAYOUT_MODE,
     LAYOUT_MODES,
     SceneKeyframeData,
@@ -62,6 +64,8 @@ class RenderOptions:
     ffmpeg_binary: str = "ffmpeg"
     layout_mode: str = DEFAULT_LAYOUT_MODE
     scene_starts: Mapping[str, str] | None = None
+    scene_positioning: str = DEFAULT_SCENE_POSITIONING
+    scene_settle_steps: int = DEFAULT_SCENE_SETTLE_STEPS
 
 
 @dataclass(frozen=True)
@@ -146,6 +150,8 @@ def render_animation(options: RenderOptions) -> RenderResult:
             color_options=options.color_options,
             bloom_config=options.bloom_config,
             size_max_value=options.size_max_value,
+            scene_positioning=options.scene_positioning,
+            scene_settle_steps=options.scene_settle_steps,
         )
     else:
         table = load_keyframes(input_path)

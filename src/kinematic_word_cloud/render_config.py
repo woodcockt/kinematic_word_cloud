@@ -18,7 +18,13 @@ from .layout import (
     DEFAULT_PALETTE_NAME,
     ColorOptions,
 )
-from .scenes import DEFAULT_LAYOUT_MODE, LAYOUT_MODES
+from .scenes import (
+    DEFAULT_LAYOUT_MODE,
+    DEFAULT_SCENE_POSITIONING,
+    DEFAULT_SCENE_SETTLE_STEPS,
+    LAYOUT_MODES,
+    SCENE_POSITIONING_MODES,
+)
 from .timeline import DEFAULT_INTERPOLATION, INTERPOLATION_MODES
 
 
@@ -254,6 +260,48 @@ def resolve_layout_mode(
             "layout_mode must be one of: " + ", ".join(LAYOUT_MODES)
         )
     return layout_mode
+
+
+def resolve_scene_positioning(
+    cli_values: object,
+    config: Mapping[str, Any],
+) -> str:
+    """Resolve scene positioning strategy."""
+
+    scene_positioning = str(
+        setting(
+            cli_values,
+            config,
+            "scene_positioning",
+            DEFAULT_SCENE_POSITIONING,
+        )
+    )
+    if scene_positioning not in SCENE_POSITIONING_MODES:
+        raise KeyframeDataError(
+            "scene_positioning must be one of: "
+            + ", ".join(SCENE_POSITIONING_MODES)
+        )
+    return scene_positioning
+
+
+def resolve_scene_settle_steps(
+    cli_values: object,
+    config: Mapping[str, Any],
+) -> int:
+    """Resolve hidden physics warmup steps for settled scene positioning."""
+
+    scene_settle_steps = optional_int(
+        setting(
+            cli_values,
+            config,
+            "scene_settle_steps",
+            DEFAULT_SCENE_SETTLE_STEPS,
+        ),
+        "scene_settle_steps",
+    )
+    if scene_settle_steps is None or scene_settle_steps < 0:
+        raise KeyframeDataError("scene_settle_steps must be non-negative.")
+    return scene_settle_steps
 
 
 def resolve_scene_starts(
