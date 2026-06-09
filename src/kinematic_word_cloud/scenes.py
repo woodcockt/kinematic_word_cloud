@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from math import floor
+from math import cos, floor, pi, sin
 from pathlib import Path
 
 import pandas as pd
@@ -64,6 +64,14 @@ FRONT_IMAGE_LAYER = "front"
 BACK_IMAGE_LAYER = "back"
 IMAGE_LAYERS: tuple[str, ...] = (FRONT_IMAGE_LAYER, BACK_IMAGE_LAYER)
 RASTER_IMAGE_SUFFIXES: tuple[str, ...] = (".png", ".jpg", ".jpeg", ".webp")
+WORDCLOUD_SCENE_POSITIONING = "wordcloud"
+SETTLED_CENTER_SCENE_POSITIONING = "settled-center"
+SCENE_POSITIONING_MODES: tuple[str, ...] = (
+    WORDCLOUD_SCENE_POSITIONING,
+    SETTLED_CENTER_SCENE_POSITIONING,
+)
+DEFAULT_SCENE_POSITIONING = WORDCLOUD_SCENE_POSITIONING
+DEFAULT_SCENE_SETTLE_STEPS = 120
 
 
 @dataclass(frozen=True)
@@ -493,8 +501,18 @@ def render_scene_animation_frames(
     color_options: ColorOptions | None = None,
     bloom_config: BloomConfig | None = None,
     size_max_value: float | None = None,
+    scene_positioning: str = DEFAULT_SCENE_POSITIONING,
+    scene_settle_steps: int = DEFAULT_SCENE_SETTLE_STEPS,
 ) -> tuple[list[Path], tuple[SceneRenderInfo, ...]]:
     """Render one continuous raster frame sequence from per-scene layouts."""
+
+    if scene_positioning not in SCENE_POSITIONING_MODES:
+        raise KeyframeDataError(
+            "scene_positioning must be one of: "
+            + ", ".join(SCENE_POSITIONING_MODES)
+        )
+    if scene_settle_steps < 0:
+        raise KeyframeDataError("scene_settle_steps must be non-negative.")
 
     output = Path(output_dir)
     output.mkdir(parents=True, exist_ok=True)
@@ -556,28 +574,75 @@ def render_scene_animation_frames(
             width=width,
             height=height,
         )
+        text_anchor_centers = resolved_centers
+        image_anchor_centers = resolved_image_centers
+        text_initial_centers: Mapping[str, tuple[float, float]] | None = None
+        image_initial_centers: Mapping[str, tuple[float, float]] | None = None
+        settle_locked_ids: set[str] = set()
+        if scene_positioning == SETTLED_CENTER_SCENE_POSITIONING:
+            text_anchor_centers = {
+                word: (width / 2.0, height / 2.0)
+                for word in scene.table.words
+            }
+            image_anchor_centers = {
+                image_item.item_id: (width / 2.0, height / 2.0)
+                for image_item in scene.image_items
+            }
+            text_initial_centers, image_initial_centers = (
+                _settled_center_initial_centers(
+                    scene,
+                    resolved_centers=resolved_centers,
+                    resolved_image_centers=resolved_image_centers,
+                    carryover_centers_by_id=carryover_centers_by_id,
+                    width=width,
+                    height=height,
+                )
+            )
+            settle_locked_ids = _scene_carryover_body_ids(
+                scene,
+                carryover_centers_by_id,
+            )
         simulator = (
             _build_scene_physics_simulator(
                 scene,
                 layout=layout,
                 peak_sizes=peak_sizes,
-                centers=resolved_centers,
+                centers=text_anchor_centers,
+                initial_centers=text_initial_centers,
                 image_peak_sizes=image_peak_sizes,
-                image_centers=resolved_image_centers,
+                image_centers=image_anchor_centers,
+                initial_image_centers=image_initial_centers,
                 canvas_size=(width, height),
                 config=physics_config,
             )
-            if use_physics
+            if use_physics or scene_positioning == SETTLED_CENTER_SCENE_POSITIONING
             else None
         )
+        combined_peak_values = {
+            **size_reference_values,
+            **image_peak_values,
+        }
+        if (
+            simulator is not None
+            and scene_positioning == SETTLED_CENTER_SCENE_POSITIONING
+            and scene_settle_steps > 0
+        ):
+            for _ in range(scene_settle_steps):
+                simulator.step(
+                    combined_peak_values,
+                    combined_peak_values,
+                    locked=settle_locked_ids,
+                )
         scene_start_frame_index = len(frame_paths)
         last_centers = resolved_centers
         last_image_centers = resolved_image_centers
 
-        for frame in iter_timeline_frames(
-            scene.table,
-            frames_per_transition=frames_per_transition,
-            interpolation=interpolation,
+        for frame_index, frame in enumerate(
+            iter_timeline_frames(
+                scene.table,
+                frames_per_transition=frames_per_transition,
+                interpolation=interpolation,
+            )
         ):
             frame_path = output / f"frame_{len(frame_paths):04d}.png"
             physics_values = _clamp_values_to_size_max(
@@ -597,15 +662,18 @@ def render_scene_animation_frames(
                 **physics_values,
                 **image_physics_values,
             }
-            combined_peak_values = {
-                **size_reference_values,
-                **image_peak_values,
-            }
-            centers = (
-                simulator.step(combined_physics_values, combined_peak_values)
-                if simulator is not None
-                else resolved_centers
-            )
+            if (
+                simulator is not None
+                and scene_positioning == SETTLED_CENTER_SCENE_POSITIONING
+                and frame_index == 0
+            ):
+                centers = simulator.centers()
+            else:
+                centers = (
+                    simulator.step(combined_physics_values, combined_peak_values)
+                    if simulator is not None
+                    else resolved_centers
+                )
             last_centers = centers
             image_centers = (
                 {
@@ -1087,14 +1155,101 @@ def _load_image_asset(
     return image_cache[path]
 
 
+def _settled_center_initial_centers(
+    scene: SceneSlice,
+    *,
+    resolved_centers: Mapping[str, tuple[float, float]],
+    resolved_image_centers: Mapping[str, tuple[float, float]],
+    carryover_centers_by_id: Mapping[str, tuple[float, float]],
+    width: int,
+    height: int,
+) -> tuple[
+    dict[str, tuple[float, float]],
+    dict[str, tuple[float, float]],
+]:
+    ring_points = _ring_spawn_points(
+        len(scene.table.words) + len(scene.image_items),
+        width=width,
+        height=height,
+    )
+    ring_index = 0
+    text_centers: dict[str, tuple[float, float]] = {}
+    image_centers: dict[str, tuple[float, float]] = {}
+
+    for word in scene.table.words:
+        row_id = scene.ids_by_word[word]
+        if row_id in carryover_centers_by_id:
+            text_centers[word] = carryover_centers_by_id[row_id]
+        elif word in scene.positions_by_word:
+            text_centers[word] = resolved_centers[word]
+        else:
+            text_centers[word] = ring_points[ring_index]
+            ring_index += 1
+
+    for image_item in scene.image_items:
+        if image_item.item_id in carryover_centers_by_id:
+            image_centers[image_item.item_id] = carryover_centers_by_id[
+                image_item.item_id
+            ]
+        elif image_item.position is not None:
+            image_centers[image_item.item_id] = resolved_image_centers[
+                image_item.item_id
+            ]
+        else:
+            image_centers[image_item.item_id] = ring_points[ring_index]
+            ring_index += 1
+
+    return text_centers, image_centers
+
+
+def _scene_carryover_body_ids(
+    scene: SceneSlice,
+    carryover_centers_by_id: Mapping[str, tuple[float, float]],
+) -> set[str]:
+    body_ids = {
+        word
+        for word in scene.table.words
+        if scene.ids_by_word[word] in carryover_centers_by_id
+    }
+    body_ids.update(
+        image_item.item_id
+        for image_item in scene.image_items
+        if image_item.item_id in carryover_centers_by_id
+    )
+    return body_ids
+
+
+def _ring_spawn_points(
+    count: int,
+    *,
+    width: int,
+    height: int,
+) -> list[tuple[float, float]]:
+    if count <= 0:
+        return []
+
+    center_x = width / 2.0
+    center_y = height / 2.0
+    radius = min(width, height) * 0.45
+    return [
+        (
+            center_x + cos((-pi / 2.0) + (2.0 * pi * index / count)) * radius,
+            center_y + sin((-pi / 2.0) + (2.0 * pi * index / count)) * radius,
+        )
+        for index in range(count)
+    ]
+
+
 def _build_scene_physics_simulator(
     scene: SceneSlice,
     *,
     layout,
     peak_sizes: Mapping[str, tuple[int, int]],
     centers: Mapping[str, tuple[float, float]],
+    initial_centers: Mapping[str, tuple[float, float]] | None = None,
     image_peak_sizes: Mapping[str, tuple[int, int]],
     image_centers: Mapping[str, tuple[float, float]],
+    initial_image_centers: Mapping[str, tuple[float, float]] | None = None,
     canvas_size: tuple[int, int],
     config: PhysicsConfig | None,
 ) -> PhysicsSimulator:
@@ -1103,6 +1258,11 @@ def _build_scene_physics_simulator(
             word=word_layout.word,
             anchor=centers[word_layout.word],
             peak_size=peak_sizes[word_layout.word],
+            initial_position=(
+                initial_centers.get(word_layout.word)
+                if initial_centers is not None
+                else None
+            ),
         )
         for word_layout in layout.words
         if word_layout.word in scene.ids_by_word
@@ -1112,6 +1272,11 @@ def _build_scene_physics_simulator(
             word=image_item.item_id,
             anchor=image_centers[image_item.item_id],
             peak_size=image_peak_sizes[image_item.item_id],
+            initial_position=(
+                initial_image_centers.get(image_item.item_id)
+                if initial_image_centers is not None
+                else None
+            ),
         )
         for image_item in scene.image_items
     )

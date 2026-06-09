@@ -29,12 +29,14 @@ from .render_config import (
     resolve_interpolation,
     resolve_layout_mode,
     resolve_project_path,
+    resolve_scene_positioning,
+    resolve_scene_settle_steps,
     resolve_scene_starts,
     resolve_size_max_value,
     resolve_timing_values,
     setting,
 )
-from .scenes import LAYOUT_MODES, SCENE_LAYOUT_MODE
+from .scenes import LAYOUT_MODES, SCENE_LAYOUT_MODE, SCENE_POSITIONING_MODES
 from .timeline import INTERPOLATION_MODES
 
 
@@ -79,6 +81,8 @@ def main(argv: Sequence[str] | None = None) -> None:
         bloom_config = build_bloom_config(args, config)
         size_max_value = resolve_size_max_value(args, config)
         layout_mode = resolve_layout_mode(args, config)
+        scene_positioning = resolve_scene_positioning(args, config)
+        scene_settle_steps = resolve_scene_settle_steps(args, config)
         scene_starts = resolve_scene_starts(args, config)
         export_formats = resolve_export_formats(args, config)
         timing_values = resolve_timing_values(args, config)
@@ -141,6 +145,8 @@ def main(argv: Sequence[str] | None = None) -> None:
                 base_dir=base_dir,
                 layout_mode=layout_mode,
                 scene_starts=scene_starts,
+                scene_positioning=scene_positioning,
+                scene_settle_steps=scene_settle_steps,
             )
         )
     except KeyframeDataError as exc:
@@ -152,6 +158,8 @@ def main(argv: Sequence[str] | None = None) -> None:
         aspect=aspect,
         background_color=background_color,
         layout_mode=layout_mode,
+        scene_positioning=scene_positioning,
+        scene_settle_steps=scene_settle_steps,
         interpolation=interpolation,
         size_max_value=size_max_value,
         color_options=color_options,
@@ -356,6 +364,22 @@ def build_parser() -> argparse.ArgumentParser:
         help="Scene start label for --layout-mode scene. Repeat for each scene.",
     )
     parser.add_argument(
+        "--scene-positioning",
+        choices=SCENE_POSITIONING_MODES,
+        default=argparse.SUPPRESS,
+        help=(
+            "Scene positioning strategy. settled-center seeds items around the "
+            "canvas, pulls them toward the center with hidden physics warmup, "
+            "then starts rendering from the settled state."
+        ),
+    )
+    parser.add_argument(
+        "--scene-settle-steps",
+        type=int,
+        default=argparse.SUPPRESS,
+        help="Hidden physics warmup steps for --scene-positioning settled-center.",
+    )
+    parser.add_argument(
         "--interpolation",
         choices=INTERPOLATION_MODES,
         default=argparse.SUPPRESS,
@@ -473,6 +497,8 @@ def _print_summary(
     aspect: str,
     background_color: str,
     layout_mode: str,
+    scene_positioning: str,
+    scene_settle_steps: int,
     interpolation: str,
     size_max_value: float | None,
     color_options,
@@ -484,6 +510,10 @@ def _print_summary(
     print(f"Canvas: {result.canvas_size.width}x{result.canvas_size.height} ({aspect})")
     print(f"Background: {background_color}")
     print(f"Layout mode: {layout_mode}")
+    if layout_mode == SCENE_LAYOUT_MODE:
+        print(f"Scene positioning: {scene_positioning}")
+        if scene_positioning != "wordcloud":
+            print(f"Scene settle steps: {scene_settle_steps}")
     if result.scene_render_info:
         print(
             "Scenes: "

@@ -325,6 +325,21 @@ is used to carry positions across scenes. Optional `x` and `y` values are
 normalized center coordinates from `0` to `1`; they seed or override a word or
 image item's position.
 
+By default, scene mode uses `wordcloud` positions as anchors. For sparse scenes
+where you want active items pulled into a dense center cluster, use settled
+center positioning:
+
+```bash
+kwc --config examples/scene_config.toml --scene-positioning settled-center --scene-settle-steps 120
+```
+
+In TOML, use `scene_positioning = "settled-center"` and optionally
+`scene_settle_steps = 120`. This mode still uses `wordcloud` for word sizing,
+color, and orientation, but seeds new scene items around the canvas, anchors
+them to the center, runs hidden physics warmup, and starts rendering from the
+settled state. Recurring `id` values inherit their previous final positions and
+stay locked during the hidden warmup so new scene items settle around them.
+
 Scene mode can also render static image assets as animated cloud items. Use
 `type = "image"` with explicit `id` and `asset` values:
 

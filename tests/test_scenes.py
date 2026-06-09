@@ -9,6 +9,7 @@ from kinematic_word_cloud.api import RenderOptions, render_animation
 from kinematic_word_cloud.data import KeyframeDataError
 from kinematic_word_cloud.scenes import (
     SCENE_LAYOUT_MODE,
+    SETTLED_CENTER_SCENE_POSITIONING,
     from_scene_dataframe,
     render_scene_animation_frames,
 )
@@ -220,6 +221,45 @@ def test_scene_render_keeps_visible_boundary_word_center(tmp_path, monkeypatch) 
         width=320,
         height=180,
         random_state=3,
+    )
+
+    intro_final = rendered_frames[2]
+    chorus_first = rendered_frames[3]
+    assert intro_final["values"]["python"] > 0
+    assert chorus_first["values"]["python"] > 0
+    assert chorus_first["centers"]["python"] == pytest.approx(
+        intro_final["centers"]["python"]
+    )
+
+
+def test_scene_settled_center_locks_carryover_during_warmup(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    scene_data = from_scene_dataframe(scene_dataframe(), scene_starts=SCENE_STARTS)
+    original_render_fixed_frame = scene_module.render_fixed_frame
+    rendered_frames = []
+
+    def spy_render_fixed_frame(table, layout, values, output_path, **kwargs):
+        rendered_frames.append(
+            {
+                "values": dict(values),
+                "centers": dict(kwargs["centers"]),
+            }
+        )
+        return original_render_fixed_frame(table, layout, values, output_path, **kwargs)
+
+    monkeypatch.setattr(scene_module, "render_fixed_frame", spy_render_fixed_frame)
+
+    render_scene_animation_frames(
+        scene_data,
+        tmp_path,
+        frames_per_transition=1,
+        width=320,
+        height=180,
+        random_state=3,
+        scene_positioning=SETTLED_CENTER_SCENE_POSITIONING,
+        scene_settle_steps=40,
     )
 
     intro_final = rendered_frames[2]
