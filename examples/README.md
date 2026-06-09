@@ -13,7 +13,9 @@ used by the project README.
 - `bioit_svg_config.toml`: TOML render configuration for the BioIT fixture.
 - `palette_bioit.hex`: one-color-per-line palette used by the BioIT example.
 - `scene_keyframes.csv` and `scene_config.toml`: compact scene-mode fixture
-  with uneven scene spans and a recurring word.
+  with uneven scene spans, a recurring word, and the `opabinia.png` image item.
+- `opabinia.png`: static PNG asset used by the scene-mode fixture to demonstrate
+  `type=image`, responsive `asset_scale`, and `layer` ordering.
 
 ## Rendered Previews
 

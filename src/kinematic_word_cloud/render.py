@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Mapping
 
@@ -15,7 +15,7 @@ from .change_color import (
     max_absolute_change,
 )
 from .config import DEFAULT_CANVAS_SIZE
-from .data import KeyframeTable
+from .data import KeyframeDataError, KeyframeTable
 from .effects import BloomConfig, render_word_bloom
 from .labels import LabelConfig, label_for_frame, render_label_overlay
 from .layout import (
@@ -28,6 +28,19 @@ from .layout import (
 )
 from .physics import PhysicsConfig, PhysicsSimulator, WordBodySpec
 from .timeline import DEFAULT_INTERPOLATION, iter_timeline_frames
+
+
+@dataclass(frozen=True)
+class ImageFrameItem:
+    """A raster image item to composite into one rendered frame."""
+
+    item_id: str
+    image: Image.Image
+    center: tuple[float, float]
+    current_value: float
+    peak_value: float
+    peak_size: tuple[int, int]
+    layer: str = "front"
 
 
 def render_peak_cloud(
@@ -77,6 +90,7 @@ def render_fixed_frame(
     scaledchange_max_absolute_change: float = 0.0,
     size_reference_values: Mapping[str, float] | None = None,
     size_max_value: float | None = None,
+    image_items: tuple[ImageFrameItem, ...] = (),
 ) -> Image.Image:
     """Render one fixed-position frame with size scaled by current values."""
 
@@ -93,6 +107,8 @@ def render_fixed_frame(
         pillow_background_fill(background),
     )
     word_layer = Image.new("RGBA", image.size, (255, 255, 255, 0))
+    back_image_layer = Image.new("RGBA", image.size, (255, 255, 255, 0))
+    front_image_layer = Image.new("RGBA", image.size, (255, 255, 255, 0))
     bloom_layer = (
         Image.new("RGBA", image.size, (255, 255, 255, 0))
         if bloom_config is not None
@@ -169,9 +185,23 @@ def render_fixed_frame(
             )
         _alpha_composite_at(word_layer, current_image, (paste_x, paste_y))
 
+    for image_item in image_items:
+        current_image = _render_image_item(image_item)
+        if current_image is None:
+            continue
+        center_x, center_y = image_item.center
+        paste_x = int(round(center_x - current_image.width / 2))
+        paste_y = int(round(center_y - current_image.height / 2))
+        target_layer = (
+            back_image_layer if image_item.layer == "back" else front_image_layer
+        )
+        _alpha_composite_at(target_layer, current_image, (paste_x, paste_y))
+
+    image = Image.alpha_composite(image, back_image_layer)
     if bloom_layer is not None:
         image = Image.alpha_composite(image, bloom_layer)
     image = Image.alpha_composite(image, word_layer)
+    image = Image.alpha_composite(image, front_image_layer)
 
     render_label_overlay(
         image,
@@ -581,3 +611,28 @@ def _render_word_image(
     draw = ImageDraw.Draw(image)
     draw.text((-bbox[0], -bbox[1]), word, fill=color, font=transposed_font)
     return image
+
+
+def _render_image_item(item: ImageFrameItem) -> Image.Image | None:
+    current_value = float(item.current_value)
+    peak_value = float(item.peak_value)
+    if current_value <= 0 or peak_value <= 0:
+        return None
+
+    scale = current_value / peak_value
+    if scale <= 0:
+        return None
+
+    image = item.image.convert("RGBA")
+    width = max(1, int(round(item.peak_size[0] * scale)))
+    height = max(1, int(round(item.peak_size[1] * scale)))
+    try:
+        resampling = Image.Resampling.LANCZOS
+    except AttributeError:  # pragma: no cover - Pillow < 9 compatibility.
+        resampling = Image.LANCZOS
+    try:
+        return image.resize((width, height), resampling)
+    except ValueError as exc:
+        raise KeyframeDataError(
+            f"Could not resize image asset for item {item.item_id!r}."
+        ) from exc
