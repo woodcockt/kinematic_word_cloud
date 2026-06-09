@@ -1,0 +1,7 @@
+scene,id,word,color,group,x,y,s001,s002,s003,s004,s005,s006,s007
+intro,python,python,#3776AB,tech,0.35,0.50,0,0.7,1.0,0,0,0,0
+intro,layout,layout,#E76F51,design,,,0,0.3,0.9,0,0,0,0
+chorus,python,python,#3776AB,tech,,,0,0,0,0.8,1.0,0,0
+chorus,motion,motion,#2A9D8F,design,0.70,0.45,0,0,0,0.2,0.9,0,0
+outro,python,python,#3776AB,tech,0.80,0.55,0,0,0,0,0,0.6,0.1
+outro,fade,fade,#E9C46A,design,,,0,0,0,0,0,0.8,0

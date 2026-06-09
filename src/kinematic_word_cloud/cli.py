@@ -27,11 +27,14 @@ from .render_config import (
     resolve_color_options,
     resolve_export_formats,
     resolve_interpolation,
+    resolve_layout_mode,
     resolve_project_path,
+    resolve_scene_starts,
     resolve_size_max_value,
     resolve_timing_values,
     setting,
 )
+from .scenes import LAYOUT_MODES, SCENE_LAYOUT_MODE
 from .timeline import INTERPOLATION_MODES
 
 
@@ -65,6 +68,8 @@ def main(argv: Sequence[str] | None = None) -> None:
         )
         bloom_config = build_bloom_config(args, config)
         size_max_value = resolve_size_max_value(args, config)
+        layout_mode = resolve_layout_mode(args, config)
+        scene_starts = resolve_scene_starts(args, config)
         export_formats = resolve_export_formats(args, config)
         timing_values = resolve_timing_values(args, config)
     except KeyframeDataError as exc:
@@ -76,15 +81,29 @@ def main(argv: Sequence[str] | None = None) -> None:
             "Transparent backgrounds cannot be preserved in standard MP4 export. "
             "Use --frames-only, --exports frames, or an opaque background."
         )
+    if layout_mode == SCENE_LAYOUT_MODE and "svg" in export_formats:
+        parser.error(
+            "Scene layout mode does not support SVG export yet. "
+            "Use --exports frames, gif, or mp4."
+        )
 
     aspect = str(setting(args, config, "aspect", DEFAULT_ASPECT))
-    output_name = "physics_animation" if use_physics else "fixed_animation"
+    output_name = (
+        "scene_animation"
+        if layout_mode == SCENE_LAYOUT_MODE
+        else "physics_animation" if use_physics else "fixed_animation"
+    )
     output_dir = resolve_project_path(
         setting(
             args,
             config,
             "output_dir",
-            Path("output") / ("physics_frames" if use_physics else "fixed_frames"),
+            Path("output")
+            / (
+                "scene_frames"
+                if layout_mode == SCENE_LAYOUT_MODE
+                else "physics_frames" if use_physics else "fixed_frames"
+            ),
         ),
         project_root=base_dir,
     )
@@ -110,6 +129,8 @@ def main(argv: Sequence[str] | None = None) -> None:
                 random_state=7,
                 output_name=output_name,
                 base_dir=base_dir,
+                layout_mode=layout_mode,
+                scene_starts=scene_starts,
             )
         )
     except KeyframeDataError as exc:
@@ -120,6 +141,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         base_dir=base_dir,
         aspect=aspect,
         background_color=background_color,
+        layout_mode=layout_mode,
         interpolation=interpolation,
         size_max_value=size_max_value,
         color_options=color_options,
@@ -304,6 +326,19 @@ def build_parser() -> argparse.ArgumentParser:
         help="Number of rendered frames between adjacent keyframes.",
     )
     parser.add_argument(
+        "--layout-mode",
+        choices=LAYOUT_MODES,
+        default=argparse.SUPPRESS,
+        help="Layout strategy: global peak layout or per-scene layouts.",
+    )
+    parser.add_argument(
+        "--scene-start",
+        action="append",
+        default=argparse.SUPPRESS,
+        metavar="SCENE=FRAME",
+        help="Scene start label for --layout-mode scene. Repeat for each scene.",
+    )
+    parser.add_argument(
         "--interpolation",
         choices=INTERPOLATION_MODES,
         default=argparse.SUPPRESS,
@@ -420,6 +455,7 @@ def _print_summary(
     base_dir: Path,
     aspect: str,
     background_color: str,
+    layout_mode: str,
     interpolation: str,
     size_max_value: float | None,
     color_options,
@@ -430,6 +466,15 @@ def _print_summary(
     print(f"Wrote {len(result.frame_paths)} frames to {relative_output_dir}")
     print(f"Canvas: {result.canvas_size.width}x{result.canvas_size.height} ({aspect})")
     print(f"Background: {background_color}")
+    print(f"Layout mode: {layout_mode}")
+    if result.scene_render_info:
+        print(
+            "Scenes: "
+            + ", ".join(
+                f"{scene.name} ({scene.frame_count} frames)"
+                for scene in result.scene_render_info
+            )
+        )
     print(f"Interpolation: {interpolation}")
     if size_max_value is not None:
         print(f"Size max value: {size_max_value:g}")

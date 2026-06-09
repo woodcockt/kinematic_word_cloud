@@ -12,6 +12,8 @@ used by the project README.
 - `bioit_top_terms_2016_2026.csv`: larger BioIT phrase-frequency fixture.
 - `bioit_svg_config.toml`: TOML render configuration for the BioIT fixture.
 - `palette_bioit.hex`: one-color-per-line palette used by the BioIT example.
+- `scene_keyframes.csv` and `scene_config.toml`: compact scene-mode fixture
+  with uneven scene spans and a recurring word.
 
 ## Rendered Previews
 

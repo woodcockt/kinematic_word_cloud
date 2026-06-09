@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -22,6 +22,16 @@ from .labels import LabelConfig
 from .layout import ColorOptions
 from .render import render_fixed_animation_frames
 from .render_config import EXPORT_FORMATS, resolve_export_paths
+from .scenes import (
+    DEFAULT_LAYOUT_MODE,
+    SCENE_LAYOUT_MODE,
+    LAYOUT_MODES,
+    SceneKeyframeData,
+    SceneRenderInfo,
+    load_scene_keyframes,
+    render_scene_animation_frames,
+    resolve_scene_animation_timing,
+)
 from .timeline import DEFAULT_INTERPOLATION
 
 
@@ -50,6 +60,8 @@ class RenderOptions:
     output_name: str | None = None
     base_dir: str | Path | None = None
     ffmpeg_binary: str = "ffmpeg"
+    layout_mode: str = DEFAULT_LAYOUT_MODE
+    scene_starts: Mapping[str, str] | None = None
 
 
 @dataclass(frozen=True)
@@ -63,6 +75,9 @@ class RenderResult:
     timing: AnimationTiming
     canvas_size: CanvasSize
     table: KeyframeTable
+    layout_mode: str
+    scene_data: SceneKeyframeData | None = None
+    scene_render_info: tuple[SceneRenderInfo, ...] = ()
 
 
 def render_animation(options: RenderOptions) -> RenderResult:
@@ -70,28 +85,29 @@ def render_animation(options: RenderOptions) -> RenderResult:
 
     base_dir = _resolve_base_dir(options.base_dir)
     input_path = _resolve_path(options.input_path, base_dir=base_dir)
-    table = load_keyframes(input_path)
+    layout_mode = _normalize_layout_mode(options.layout_mode)
     canvas_size = resolve_canvas_size(options.aspect)
-    timing = resolve_animation_timing(
-        table,
-        frames_per_transition=options.frames_per_transition,
-        fps=options.fps,
-        total_duration_seconds=options.total_duration,
-        seconds_per_transition=options.seconds_per_transition,
-    )
     export_formats = _normalize_export_formats(options.exports)
     if is_transparent_background(options.background_color) and "mp4" in export_formats:
         raise KeyframeDataError(
             "Transparent backgrounds cannot be preserved in standard MP4 export. "
             "Use frames-only output, exports=('frames',), or an opaque background."
         )
+    if layout_mode == SCENE_LAYOUT_MODE and "svg" in export_formats:
+        raise KeyframeDataError(
+            "Scene layout mode does not support SVG export yet. "
+            "Use frames, gif, or mp4."
+        )
 
-    output_name = options.output_name or (
-        "physics_animation" if options.use_physics else "fixed_animation"
+    output_name = options.output_name or _default_output_name(
+        layout_mode,
+        use_physics=options.use_physics,
     )
     output_dir = _resolve_path(
-        options.output_dir
-        or Path("output") / ("physics_frames" if options.use_physics else "fixed_frames"),
+        options.output_dir or Path("output") / _default_output_dir_name(
+            layout_mode,
+            use_physics=options.use_physics,
+        ),
         base_dir=base_dir,
     )
     resolved_export_paths = resolve_export_paths(
@@ -100,22 +116,62 @@ def render_animation(options: RenderOptions) -> RenderResult:
         formats=export_formats,
         project_root=base_dir,
     )
-    frame_paths = render_fixed_animation_frames(
-        table,
-        output_dir,
-        frames_per_transition=timing.frames_per_transition,
-        width=canvas_size.width,
-        height=canvas_size.height,
-        background_color=options.background_color,
-        random_state=options.random_state,
-        min_font_size=options.min_font_size,
-        use_physics=options.use_physics,
-        label_config=options.label_config,
-        interpolation=options.interpolation,
-        color_options=options.color_options,
-        bloom_config=options.bloom_config,
-        size_max_value=options.size_max_value,
-    )
+    scene_data: SceneKeyframeData | None = None
+    scene_render_info: tuple[SceneRenderInfo, ...] = ()
+    if layout_mode == SCENE_LAYOUT_MODE:
+        scene_data = load_scene_keyframes(
+            input_path,
+            scene_starts=options.scene_starts or {},
+        )
+        table = scene_data.timeline_table()
+        timing = resolve_scene_animation_timing(
+            scene_data,
+            frames_per_transition=options.frames_per_transition,
+            fps=options.fps,
+            total_duration_seconds=options.total_duration,
+            seconds_per_transition=options.seconds_per_transition,
+        )
+        frame_paths, scene_render_info = render_scene_animation_frames(
+            scene_data,
+            output_dir,
+            frames_per_transition=timing.frames_per_transition,
+            width=canvas_size.width,
+            height=canvas_size.height,
+            background_color=options.background_color,
+            random_state=options.random_state,
+            min_font_size=options.min_font_size,
+            use_physics=options.use_physics,
+            label_config=options.label_config,
+            interpolation=options.interpolation,
+            color_options=options.color_options,
+            bloom_config=options.bloom_config,
+            size_max_value=options.size_max_value,
+        )
+    else:
+        table = load_keyframes(input_path)
+        timing = resolve_animation_timing(
+            table,
+            frames_per_transition=options.frames_per_transition,
+            fps=options.fps,
+            total_duration_seconds=options.total_duration,
+            seconds_per_transition=options.seconds_per_transition,
+        )
+        frame_paths = render_fixed_animation_frames(
+            table,
+            output_dir,
+            frames_per_transition=timing.frames_per_transition,
+            width=canvas_size.width,
+            height=canvas_size.height,
+            background_color=options.background_color,
+            random_state=options.random_state,
+            min_font_size=options.min_font_size,
+            use_physics=options.use_physics,
+            label_config=options.label_config,
+            interpolation=options.interpolation,
+            color_options=options.color_options,
+            bloom_config=options.bloom_config,
+            size_max_value=options.size_max_value,
+        )
 
     written_exports: dict[str, Path] = {}
     if "gif" in export_formats:
@@ -157,6 +213,9 @@ def render_animation(options: RenderOptions) -> RenderResult:
         timing=timing,
         canvas_size=canvas_size,
         table=table,
+        layout_mode=layout_mode,
+        scene_data=scene_data,
+        scene_render_info=scene_render_info,
     )
 
 
@@ -190,3 +249,24 @@ def _normalize_export_formats(exports: Iterable[str]) -> set[str]:
             if export_format != "frames":
                 formats.add(export_format)
     return formats
+
+
+def _normalize_layout_mode(layout_mode: str) -> str:
+    normalized = str(layout_mode).strip().lower()
+    if normalized not in LAYOUT_MODES:
+        raise KeyframeDataError(
+            "layout_mode must be one of: " + ", ".join(LAYOUT_MODES)
+        )
+    return normalized
+
+
+def _default_output_name(layout_mode: str, *, use_physics: bool) -> str:
+    if layout_mode == SCENE_LAYOUT_MODE:
+        return "scene_animation"
+    return "physics_animation" if use_physics else "fixed_animation"
+
+
+def _default_output_dir_name(layout_mode: str, *, use_physics: bool) -> str:
+    if layout_mode == SCENE_LAYOUT_MODE:
+        return "scene_frames"
+    return "physics_frames" if use_physics else "fixed_frames"
