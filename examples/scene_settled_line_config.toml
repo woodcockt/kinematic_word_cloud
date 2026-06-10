@@ -1,0 +1,18 @@
+input = "scene_keyframes.csv"
+layout_mode = "scene"
+scene_positioning = "settled-line"
+scene_settle_steps = 100
+aspect = "16:9"
+background_color = "white"
+exports = ["gif"]
+output_dir = "../output/scene_settled_line_frames"
+output = "../output/scene_settled_line"
+total_duration = 4
+interpolation = "smoothstep"
+color_by = "group"
+physics = true
+
+[scene_starts]
+intro = "s001"
+chorus = "s004"
+outro = "s006"

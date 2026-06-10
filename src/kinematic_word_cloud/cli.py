@@ -368,16 +368,16 @@ def build_parser() -> argparse.ArgumentParser:
         choices=SCENE_POSITIONING_MODES,
         default=argparse.SUPPRESS,
         help=(
-            "Scene positioning strategy. settled-center seeds items around the "
-            "canvas, pulls them toward the center with hidden physics warmup, "
-            "then starts rendering from the settled state."
+            "Scene positioning strategy. settled-center and settled-line seed "
+            "items around the canvas, pull them toward center anchors with "
+            "hidden physics warmup, then start rendering from the settled state."
         ),
     )
     parser.add_argument(
         "--scene-settle-steps",
         type=int,
         default=argparse.SUPPRESS,
-        help="Hidden physics warmup steps for --scene-positioning settled-center.",
+        help="Hidden physics warmup steps for settled scene positioning modes.",
     )
     parser.add_argument(
         "--interpolation",
