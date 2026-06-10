@@ -53,6 +53,7 @@ DEFAULT_SCENE_COLUMN = "scene"
 DEFAULT_ID_COLUMN = "id"
 DEFAULT_X_COLUMN = "x"
 DEFAULT_Y_COLUMN = "y"
+DEFAULT_ATTRACTOR_COLUMN = "attractor"
 DEFAULT_TYPE_COLUMN = "type"
 DEFAULT_ASSET_COLUMN = "asset"
 DEFAULT_ASSET_SCALE_COLUMN = "asset_scale"
@@ -67,13 +68,16 @@ RASTER_IMAGE_SUFFIXES: tuple[str, ...] = (".png", ".jpg", ".jpeg", ".webp")
 WORDCLOUD_SCENE_POSITIONING = "wordcloud"
 SETTLED_CENTER_SCENE_POSITIONING = "settled-center"
 SETTLED_LINE_SCENE_POSITIONING = "settled-line"
+ATTRACTORS_SCENE_POSITIONING = "attractors"
 SCENE_POSITIONING_MODES: tuple[str, ...] = (
     WORDCLOUD_SCENE_POSITIONING,
     SETTLED_CENTER_SCENE_POSITIONING,
     SETTLED_LINE_SCENE_POSITIONING,
+    ATTRACTORS_SCENE_POSITIONING,
 )
 DEFAULT_SCENE_POSITIONING = WORDCLOUD_SCENE_POSITIONING
 DEFAULT_SCENE_SETTLE_STEPS = 120
+DEFAULT_ATTRACTOR_NAME = "default"
 
 
 @dataclass(frozen=True)
@@ -85,6 +89,7 @@ class SceneImageItem:
     asset_scale: float
     layer: str = FRONT_IMAGE_LAYER
     position: tuple[float, float] | None = None
+    attractor: str | None = None
 
 
 @dataclass(frozen=True)
@@ -99,6 +104,7 @@ class SceneSlice:
     table: KeyframeTable
     ids_by_word: dict[str, str]
     positions_by_word: dict[str, tuple[float, float]]
+    attractors_by_word: dict[str, str]
     image_values: pd.DataFrame
     image_items: tuple[SceneImageItem, ...] = ()
 
@@ -168,6 +174,7 @@ def load_scene_keyframes(
     group_column: str = DEFAULT_GROUP_COLUMN,
     x_column: str = DEFAULT_X_COLUMN,
     y_column: str = DEFAULT_Y_COLUMN,
+    attractor_column: str = DEFAULT_ATTRACTOR_COLUMN,
     type_column: str = DEFAULT_TYPE_COLUMN,
     asset_column: str = DEFAULT_ASSET_COLUMN,
     asset_scale_column: str = DEFAULT_ASSET_SCALE_COLUMN,
@@ -196,6 +203,7 @@ def load_scene_keyframes(
         group_column=group_column,
         x_column=x_column,
         y_column=y_column,
+        attractor_column=attractor_column,
         type_column=type_column,
         asset_column=asset_column,
         asset_scale_column=asset_scale_column,
@@ -215,6 +223,7 @@ def from_scene_dataframe(
     group_column: str = DEFAULT_GROUP_COLUMN,
     x_column: str = DEFAULT_X_COLUMN,
     y_column: str = DEFAULT_Y_COLUMN,
+    attractor_column: str = DEFAULT_ATTRACTOR_COLUMN,
     type_column: str = DEFAULT_TYPE_COLUMN,
     asset_column: str = DEFAULT_ASSET_COLUMN,
     asset_scale_column: str = DEFAULT_ASSET_SCALE_COLUMN,
@@ -236,6 +245,7 @@ def from_scene_dataframe(
     group_column = _clean_column_name(group_column)
     x_column = _clean_column_name(x_column)
     y_column = _clean_column_name(y_column)
+    attractor_column = _clean_column_name(attractor_column)
     type_column = _clean_column_name(type_column)
     asset_column = _clean_column_name(asset_column)
     asset_scale_column = _clean_column_name(asset_scale_column)
@@ -255,6 +265,7 @@ def from_scene_dataframe(
         group_column,
         x_column,
         y_column,
+        attractor_column,
         type_column,
         asset_column,
         asset_scale_column,
@@ -293,6 +304,7 @@ def from_scene_dataframe(
     )
     ids = _read_ids(normalized, words, item_types, id_column)
     positions = _read_positions(normalized, ids, x_column, y_column)
+    attractors = _read_attractors(normalized, attractor_column)
     asset_scales = _read_asset_scales(normalized, item_types, asset_scale_column)
     image_layers = _read_image_layers(normalized, item_types, layer_column)
     values = normalized.loc[:, frame_columns].apply(pd.to_numeric, errors="coerce")
@@ -363,6 +375,15 @@ def from_scene_dataframe(
             )
             if position is not None
         }
+        attractors_by_word = {
+            str(word): str(attractor)
+            for word, attractor in zip(
+                words.loc[text_mask].tolist(),
+                attractors.loc[text_mask].tolist(),
+                strict=True,
+            )
+            if attractor is not None
+        }
         image_values = values.loc[image_mask, scene_frame_columns].copy()
         image_values.index = ids.loc[image_mask].tolist()
         image_items = tuple(
@@ -372,13 +393,15 @@ def from_scene_dataframe(
                 asset_scale=float(asset_scale),
                 layer=str(layer),
                 position=position,
+                attractor=attractor,
             )
-            for row_id, asset, asset_scale, layer, position in zip(
+            for row_id, asset, asset_scale, layer, position, attractor in zip(
                 ids.loc[image_mask].tolist(),
                 assets.loc[image_mask].tolist(),
                 asset_scales.loc[image_mask].tolist(),
                 image_layers.loc[image_mask].tolist(),
                 positions.loc[image_mask].tolist(),
+                attractors.loc[image_mask].tolist(),
                 strict=True,
             )
             if asset is not None
@@ -393,6 +416,7 @@ def from_scene_dataframe(
                 table=table,
                 ids_by_word=ids_by_word,
                 positions_by_word=positions_by_word,
+                attractors_by_word=attractors_by_word,
                 image_values=image_values.astype(float),
                 image_items=image_items,
             )
@@ -505,6 +529,7 @@ def render_scene_animation_frames(
     size_max_value: float | None = None,
     scene_positioning: str = DEFAULT_SCENE_POSITIONING,
     scene_settle_steps: int = DEFAULT_SCENE_SETTLE_STEPS,
+    scene_attractors: Mapping[str, tuple[float, float]] | None = None,
 ) -> tuple[list[Path], tuple[SceneRenderInfo, ...]]:
     """Render one continuous raster frame sequence from per-scene layouts."""
 
@@ -515,6 +540,15 @@ def render_scene_animation_frames(
         )
     if scene_settle_steps < 0:
         raise KeyframeDataError("scene_settle_steps must be non-negative.")
+    normalized_scene_attractors = _normalize_scene_attractors(scene_attractors)
+    if (
+        scene_positioning == ATTRACTORS_SCENE_POSITIONING
+        and not normalized_scene_attractors
+    ):
+        raise KeyframeDataError(
+            "scene_attractors must define at least one attractor when "
+            "scene_positioning is 'attractors'."
+        )
 
     output = Path(output_dir)
     output.mkdir(parents=True, exist_ok=True)
@@ -575,6 +609,7 @@ def render_scene_animation_frames(
             carryover_centers_by_id=carryover_centers_by_id,
             width=width,
             height=height,
+            require_positions=not _uses_settled_scene_positioning(scene_positioning),
         )
         text_anchor_centers = resolved_centers
         image_anchor_centers = resolved_image_centers
@@ -585,6 +620,7 @@ def render_scene_animation_frames(
             text_anchor_centers, image_anchor_centers = _settled_scene_anchor_centers(
                 scene,
                 scene_positioning=scene_positioning,
+                scene_attractors=normalized_scene_attractors,
                 width=width,
                 height=height,
             )
@@ -968,20 +1004,20 @@ def _asset_base_dir(source: str | Path | None) -> Path:
 
 def _read_positions(
     dataframe: pd.DataFrame,
-    words: pd.Series,
+    labels: pd.Series,
     x_column: str,
     y_column: str,
 ) -> pd.Series:
     has_x = x_column in dataframe.columns
     has_y = y_column in dataframe.columns
     if not has_x and not has_y:
-        return pd.Series([None for _ in words], index=dataframe.index)
+        return pd.Series([None for _ in labels], index=dataframe.index)
     if has_x != has_y:
         raise KeyframeDataError("Scene positions require both x and y columns.")
 
     positions: list[tuple[float, float] | None] = []
-    for word, raw_x, raw_y in zip(
-        words,
+    for label, raw_x, raw_y in zip(
+        labels,
         dataframe[x_column],
         dataframe[y_column],
         strict=True,
@@ -993,21 +1029,30 @@ def _read_positions(
             continue
         if x_text is None or y_text is None:
             raise KeyframeDataError(
-                f"Scene position for word {word!r} requires both x and y."
+                f"Scene position for item {label!r} requires both x and y."
             )
         try:
             x = float(x_text)
             y = float(y_text)
         except ValueError as exc:
             raise KeyframeDataError(
-                f"Scene position for word {word!r} must be numeric."
+                f"Scene position for item {label!r} must be numeric."
             ) from exc
         if not 0 <= x <= 1 or not 0 <= y <= 1:
             raise KeyframeDataError(
-                f"Scene position for word {word!r} must be between 0 and 1."
+                f"Scene position for item {label!r} must be between 0 and 1."
             )
         positions.append((x, y))
     return pd.Series(positions, index=dataframe.index)
+
+
+def _read_attractors(
+    dataframe: pd.DataFrame,
+    attractor_column: str,
+) -> pd.Series:
+    if attractor_column not in dataframe.columns:
+        return pd.Series([None for _ in dataframe.index], index=dataframe.index)
+    return dataframe[attractor_column].map(_clean_optional_text)
 
 
 def _resolve_scene_centers(
@@ -1037,6 +1082,7 @@ def _resolve_scene_image_centers(
     carryover_centers_by_id: Mapping[str, tuple[float, float]],
     width: int,
     height: int,
+    require_positions: bool = True,
 ) -> dict[str, tuple[float, float]]:
     centers: dict[str, tuple[float, float]] = {}
     for image_item in scene.image_items:
@@ -1046,6 +1092,8 @@ def _resolve_scene_image_centers(
         elif image_item.item_id in carryover_centers_by_id:
             centers[image_item.item_id] = carryover_centers_by_id[image_item.item_id]
         else:
+            if not require_positions:
+                continue
             raise KeyframeDataError(
                 f"Image item {image_item.item_id!r} requires x/y unless it "
                 "inherits a position from an earlier scene."
@@ -1159,6 +1207,7 @@ def _uses_settled_scene_positioning(scene_positioning: str) -> bool:
     return scene_positioning in {
         SETTLED_CENTER_SCENE_POSITIONING,
         SETTLED_LINE_SCENE_POSITIONING,
+        ATTRACTORS_SCENE_POSITIONING,
     }
 
 
@@ -1166,6 +1215,7 @@ def _settled_scene_anchor_centers(
     scene: SceneSlice,
     *,
     scene_positioning: str,
+    scene_attractors: Mapping[str, tuple[float, float]],
     width: int,
     height: int,
 ) -> tuple[
@@ -1184,6 +1234,13 @@ def _settled_scene_anchor_centers(
     elif scene_positioning == SETTLED_LINE_SCENE_POSITIONING:
         anchor_points = _line_anchor_points(
             len(body_ids),
+            width=width,
+            height=height,
+        )
+    elif scene_positioning == ATTRACTORS_SCENE_POSITIONING:
+        return _attractor_anchor_centers(
+            scene,
+            scene_attractors=scene_attractors,
             width=width,
             height=height,
         )
@@ -1211,6 +1268,100 @@ def _settled_scene_anchor_centers(
         )
     }
     return text_anchors, image_anchors
+
+
+def _normalize_scene_attractors(
+    scene_attractors: Mapping[str, tuple[float, float]] | None,
+) -> dict[str, tuple[float, float]]:
+    if scene_attractors is None:
+        return {}
+    if not isinstance(scene_attractors, Mapping):
+        raise KeyframeDataError("scene_attractors must be a mapping of x/y points.")
+
+    normalized: dict[str, tuple[float, float]] = {}
+    for raw_name, raw_position in scene_attractors.items():
+        name = _clean_optional_text(raw_name)
+        if name is None:
+            raise KeyframeDataError("scene_attractors cannot contain blank names.")
+        try:
+            x, y = raw_position
+        except (TypeError, ValueError) as exc:
+            raise KeyframeDataError(
+                f"Attractor {name!r} must be an x/y pair."
+            ) from exc
+        try:
+            x_value = float(x)
+            y_value = float(y)
+        except (TypeError, ValueError) as exc:
+            raise KeyframeDataError(
+                f"Attractor {name!r} coordinates must be numeric."
+            ) from exc
+        if not 0 <= x_value <= 1 or not 0 <= y_value <= 1:
+            raise KeyframeDataError(
+                f"Attractor {name!r} coordinates must be between 0 and 1."
+            )
+        if name in normalized:
+            raise KeyframeDataError(f"Duplicate attractor name: {name!r}")
+        normalized[name] = (x_value, y_value)
+    return normalized
+
+
+def _attractor_anchor_centers(
+    scene: SceneSlice,
+    *,
+    scene_attractors: Mapping[str, tuple[float, float]],
+    width: int,
+    height: int,
+) -> tuple[
+    dict[str, tuple[float, float]],
+    dict[str, tuple[float, float]],
+]:
+    text_anchors = {
+        word: _attractor_center(
+            scene.attractors_by_word.get(word),
+            scene_attractors=scene_attractors,
+            width=width,
+            height=height,
+            item_label=scene.ids_by_word[word],
+            scene_name=scene.name,
+        )
+        for word in scene.table.words
+    }
+    image_anchors = {
+        image_item.item_id: _attractor_center(
+            image_item.attractor,
+            scene_attractors=scene_attractors,
+            width=width,
+            height=height,
+            item_label=image_item.item_id,
+            scene_name=scene.name,
+        )
+        for image_item in scene.image_items
+    }
+    return text_anchors, image_anchors
+
+
+def _attractor_center(
+    attractor: str | None,
+    *,
+    scene_attractors: Mapping[str, tuple[float, float]],
+    width: int,
+    height: int,
+    item_label: str,
+    scene_name: str,
+) -> tuple[float, float]:
+    attractor_name = attractor
+    if attractor_name is None and DEFAULT_ATTRACTOR_NAME in scene_attractors:
+        attractor_name = DEFAULT_ATTRACTOR_NAME
+    if attractor_name is None:
+        return (width / 2.0, height / 2.0)
+    if attractor_name not in scene_attractors:
+        raise KeyframeDataError(
+            f"Scene {scene_name!r} item {item_label!r} references unknown "
+            f"attractor {attractor_name!r}."
+        )
+    x, y = scene_attractors[attractor_name]
+    return (x * width, y * height)
 
 
 def _line_anchor_points(

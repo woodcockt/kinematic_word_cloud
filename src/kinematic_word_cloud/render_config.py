@@ -304,6 +304,41 @@ def resolve_scene_settle_steps(
     return scene_settle_steps
 
 
+def resolve_scene_attractors(
+    cli_values: object,
+    config: Mapping[str, Any],
+) -> dict[str, tuple[float, float]]:
+    """Resolve named scene attractor points from TOML."""
+
+    if "attractors" not in config:
+        return {}
+
+    attractors = config["attractors"]
+    if not isinstance(attractors, Mapping):
+        raise KeyframeDataError("Config key 'attractors' must be a table.")
+
+    resolved: dict[str, tuple[float, float]] = {}
+    for raw_name, raw_value in attractors.items():
+        name = str(raw_name).strip()
+        if not name:
+            raise KeyframeDataError("Attractor names cannot be blank.")
+        if not isinstance(raw_value, Mapping):
+            raise KeyframeDataError(f"Attractor {name!r} must be a table.")
+        if "x" not in raw_value or "y" not in raw_value:
+            raise KeyframeDataError(f"Attractor {name!r} requires x and y.")
+        x = optional_float(raw_value["x"], f"attractors.{name}.x")
+        y = optional_float(raw_value["y"], f"attractors.{name}.y")
+        if x is None or y is None or not 0 <= x <= 1 or not 0 <= y <= 1:
+            raise KeyframeDataError(
+                f"Attractor {name!r} coordinates must be between 0 and 1."
+            )
+        if name in resolved:
+            raise KeyframeDataError(f"Duplicate attractor name: {name!r}")
+        resolved[name] = (x, y)
+
+    return resolved
+
+
 def resolve_scene_starts(
     cli_values: object,
     config: Mapping[str, Any],

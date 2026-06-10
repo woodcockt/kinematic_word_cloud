@@ -1,0 +1,30 @@
+input = "scene_keyframes.csv"
+layout_mode = "scene"
+scene_positioning = "attractors"
+scene_settle_steps = 100
+aspect = "16:9"
+background_color = "white"
+exports = ["gif"]
+output_dir = "../output/scene_attractors_frames"
+output = "../output/scene_attractors"
+total_duration = 4
+interpolation = "smoothstep"
+color_by = "group"
+physics = true
+
+[attractors.left]
+x = 0.28
+y = 0.52
+
+[attractors.right]
+x = 0.72
+y = 0.52
+
+[attractors.logo]
+x = 0.50
+y = 0.34
+
+[scene_starts]
+intro = "s001"
+chorus = "s004"
+outro = "s006"

@@ -7,7 +7,9 @@ from PIL import Image
 import kinematic_word_cloud.scenes as scene_module
 from kinematic_word_cloud.api import RenderOptions, render_animation
 from kinematic_word_cloud.data import KeyframeDataError
+from kinematic_word_cloud.render_config import resolve_scene_attractors
 from kinematic_word_cloud.scenes import (
+    ATTRACTORS_SCENE_POSITIONING,
     SCENE_LAYOUT_MODE,
     SETTLED_CENTER_SCENE_POSITIONING,
     SETTLED_LINE_SCENE_POSITIONING,
@@ -127,6 +129,19 @@ def scene_dataframe() -> pd.DataFrame:
     )
 
 
+def scene_dataframe_with_attractors() -> pd.DataFrame:
+    dataframe = scene_dataframe()
+    dataframe["attractor"] = [
+        "left",
+        "right",
+        "right",
+        "left",
+        "left",
+        "right",
+    ]
+    return dataframe
+
+
 def test_scene_parser_defaults_id_and_allows_recurring_ids() -> None:
     dataframe = scene_dataframe().drop(columns=["id"])
 
@@ -142,6 +157,19 @@ def test_scene_parser_defaults_id_and_allows_recurring_ids() -> None:
     assert scene_data.scenes[0].frames == ["s001", "s002", "s003"]
     assert scene_data.scenes[1].frames == ["s004", "s005"]
     assert scene_data.scenes[2].frames == ["s006", "s007"]
+
+
+def test_scene_parser_reads_optional_attractor_column() -> None:
+    scene_data = from_scene_dataframe(
+        scene_dataframe_with_attractors(),
+        scene_starts=SCENE_STARTS,
+    )
+
+    assert scene_data.scenes[0].attractors_by_word == {
+        "python": "left",
+        "layout": "right",
+    }
+    assert scene_data.scenes[1].attractors_by_word["python"] == "right"
 
 
 def test_scene_parser_rejects_unknown_start_label() -> None:
@@ -316,6 +344,91 @@ def test_scene_settled_line_renders_continuous_frames(tmp_path) -> None:
     assert [info.frame_count for info in scene_info] == [3, 2, 2]
 
 
+def test_attractor_scene_positioning_uses_named_anchor_points() -> None:
+    scene_data = from_scene_dataframe(
+        scene_dataframe_with_attractors(),
+        scene_starts=SCENE_STARTS,
+    )
+
+    text_anchors, image_anchors = scene_module._settled_scene_anchor_centers(
+        scene_data.scenes[0],
+        scene_positioning=ATTRACTORS_SCENE_POSITIONING,
+        scene_attractors={
+            "left": (0.25, 0.50),
+            "right": (0.75, 0.50),
+        },
+        width=200,
+        height=100,
+    )
+
+    assert text_anchors["python"] == pytest.approx((50, 50))
+    assert text_anchors["layout"] == pytest.approx((150, 50))
+    assert image_anchors == {}
+
+
+def test_scene_attractor_render_writes_continuous_frames(tmp_path) -> None:
+    scene_data = from_scene_dataframe(
+        scene_dataframe_with_attractors(),
+        scene_starts=SCENE_STARTS,
+    )
+
+    frame_paths, scene_info = render_scene_animation_frames(
+        scene_data,
+        tmp_path,
+        frames_per_transition=1,
+        width=320,
+        height=180,
+        random_state=3,
+        scene_positioning=ATTRACTORS_SCENE_POSITIONING,
+        scene_attractors={
+            "left": (0.30, 0.50),
+            "right": (0.70, 0.50),
+        },
+        scene_settle_steps=20,
+    )
+
+    assert [path.name for path in frame_paths] == [
+        f"frame_{index:04d}.png" for index in range(7)
+    ]
+    assert [info.frame_count for info in scene_info] == [3, 2, 2]
+
+
+def test_scene_attractor_render_rejects_unknown_attractor(tmp_path) -> None:
+    scene_data = from_scene_dataframe(
+        scene_dataframe_with_attractors(),
+        scene_starts=SCENE_STARTS,
+    )
+
+    with pytest.raises(KeyframeDataError, match="unknown attractor"):
+        render_scene_animation_frames(
+            scene_data,
+            tmp_path,
+            frames_per_transition=1,
+            width=320,
+            height=180,
+            random_state=3,
+            scene_positioning=ATTRACTORS_SCENE_POSITIONING,
+            scene_attractors={"left": (0.30, 0.50)},
+        )
+
+
+def test_resolve_scene_attractors_from_config() -> None:
+    resolved = resolve_scene_attractors(
+        object(),
+        {"attractors": {"left": {"x": 0.25, "y": 0.50}}},
+    )
+
+    assert resolved == {"left": (0.25, 0.50)}
+
+
+def test_resolve_scene_attractors_rejects_invalid_coordinates() -> None:
+    with pytest.raises(KeyframeDataError, match="between 0 and 1"):
+        resolve_scene_attractors(
+            object(),
+            {"attractors": {"left": {"x": 1.25, "y": 0.50}}},
+        )
+
+
 def test_scene_render_composites_png_image_item(tmp_path) -> None:
     asset_path = tmp_path / "sprite.png"
     tall_asset_path = tmp_path / "tall.png"
@@ -331,6 +444,7 @@ def test_scene_render_composites_png_image_item(tmp_path) -> None:
                 "asset": "",
                 "asset_scale": "",
                 "layer": "",
+                "attractor": "",
                 "x": 0.10,
                 "y": 0.10,
                 "s001": 0.5,
@@ -344,6 +458,7 @@ def test_scene_render_composites_png_image_item(tmp_path) -> None:
                 "asset": "sprite.png",
                 "asset_scale": 0.25,
                 "layer": "front",
+                "attractor": "logo",
                 "x": 0.50,
                 "y": 0.50,
                 "s001": 0,
@@ -357,6 +472,7 @@ def test_scene_render_composites_png_image_item(tmp_path) -> None:
                 "asset": "tall.png",
                 "asset_scale": 0.25,
                 "layer": "back",
+                "attractor": "poster",
                 "x": 0.80,
                 "y": 0.50,
                 "s001": 0,
@@ -381,7 +497,9 @@ def test_scene_render_composites_png_image_item(tmp_path) -> None:
 
     assert scene_data.scenes[0].image_items[0].asset_path == asset_path
     assert scene_data.scenes[0].image_items[0].layer == "front"
+    assert scene_data.scenes[0].image_items[0].attractor == "logo"
     assert scene_data.scenes[0].image_items[1].layer == "back"
+    assert scene_data.scenes[0].image_items[1].attractor == "poster"
     assert scene_info[0].centers_by_id["sprite"] == pytest.approx((60, 40))
     assert scene_info[0].peak_sizes_by_id["sprite"] == (30, 15)
     assert scene_info[0].peak_sizes_by_id["tall"] == (5, 20)

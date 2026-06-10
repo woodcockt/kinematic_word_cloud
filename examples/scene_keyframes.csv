@@ -1,8 +1,8 @@
-scene,id,word,type,asset,asset_scale,layer,color,group,x,y,s001,s002,s003,s004,s005,s006,s007
-intro,python,python,text,,,,,tech,0.35,0.50,0,0.7,1.0,0,0,0,0
-intro,layout,layout,text,,,,,design,,,0,0.3,0.9,0,0,0,0
-chorus,python,python,text,,,,,tech,,,0,0,0,0.8,1.0,0,0
-chorus,motion,motion,text,,,,,design,0.70,0.45,0,0,0,0.2,0.9,0,0
-chorus,opabinia,,image,opabinia.png,0.14,front,,creature,0.50,0.56,0,0,0,0.1,1.0,0,0
-outro,python,python,text,,,,,tech,0.80,0.55,0,0,0,0,0,0.6,0.1
-outro,fade,fade,text,,,,,design,,,0,0,0,0,0,0.8,0
+scene,id,word,type,asset,asset_scale,layer,color,group,x,y,attractor,s001,s002,s003,s004,s005,s006,s007
+intro,python,python,text,,,,,tech,0.35,0.50,left,0,0.7,1.0,0,0,0,0
+intro,layout,layout,text,,,,,design,,,right,0,0.3,0.9,0,0,0,0
+chorus,python,python,text,,,,,tech,,,right,0,0,0,0.8,1.0,0,0
+chorus,motion,motion,text,,,,,design,0.70,0.45,left,0,0,0,0.2,0.9,0,0
+chorus,opabinia,,image,opabinia.png,0.14,front,,creature,0.50,0.56,logo,0,0,0,0.1,1.0,0,0
+outro,python,python,text,,,,,tech,0.80,0.55,left,0,0,0,0,0,0.6,0.1
+outro,fade,fade,text,,,,,design,,,right,0,0,0,0,0,0.8,0

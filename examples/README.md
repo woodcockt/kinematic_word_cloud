@@ -12,10 +12,11 @@ used by the project README.
 - `bioit_top_terms_2016_2026.csv`: larger BioIT phrase-frequency fixture.
 - `bioit_svg_config.toml`: TOML render configuration for the BioIT fixture.
 - `palette_bioit.hex`: one-color-per-line palette used by the BioIT example.
-- `scene_keyframes.csv`, `scene_config.toml`, and
-  `scene_settled_line_config.toml`: compact scene-mode fixtures with uneven
-  scene spans, a recurring word, the `opabinia.png` image item, and a
-  settled-line positioning example.
+- `scene_keyframes.csv`, `scene_config.toml`,
+  `scene_settled_line_config.toml`, and `scene_attractors_config.toml`: compact
+  scene-mode fixtures with uneven scene spans, a recurring word, the
+  `opabinia.png` image item, settled-line positioning, and named attractor
+  clusters.
 - `opabinia.png`: static PNG asset used by the scene-mode fixture to demonstrate
   `type=image`, responsive `asset_scale`, and `layer` ordering.
 
