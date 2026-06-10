@@ -312,7 +312,7 @@ kwc --config examples/scene_config.toml
 
 Scene mode uses a single wide CSV with global frame columns plus `scene`, `word`,
 and optional `id`, `type`, `asset`, `asset_scale`, `layer`, `color`, `group`,
-`x`, and `y` columns. Define the scene cuts in TOML:
+`x`, `y`, and `attractor` columns. Define the scene cuts in TOML:
 
 ```toml
 layout_mode = "scene"
@@ -326,23 +326,55 @@ normalized center coordinates from `0` to `1`; they seed or override a word or
 image item's position.
 
 By default, scene mode uses `wordcloud` positions as anchors. For sparse scenes
-where you want active items pulled into a dense center cluster or spine, use a
-settled positioning mode:
+where you want active items pulled into a dense center cluster, spine, or named
+clusters, use a settled positioning mode:
 
 ```bash
 kwc --config examples/scene_config.toml --scene-positioning settled-center --scene-settle-steps 120
 kwc --config examples/scene_config.toml --scene-positioning settled-line --scene-settle-steps 120
+kwc --config examples/scene_attractors_config.toml
 ```
 
 In TOML, use `scene_positioning = "settled-center"` or
-`scene_positioning = "settled-line"` and optionally `scene_settle_steps = 120`.
-These modes still use `wordcloud` for word sizing, color, and orientation, but
-seed new scene items around the canvas, run hidden physics warmup, and start
-rendering from the settled state. `settled-center` anchors items to the center
-point. `settled-line` anchors items along the canvas medial axis: horizontal on
-wide renders, vertical on tall renders, and collapsed to the center on square
-renders. Recurring `id` values inherit their previous final positions and stay
-locked during the hidden warmup so new scene items settle around them.
+`scene_positioning = "settled-line"`, `scene_positioning = "attractors"`, and
+optionally `scene_settle_steps = 120`. These modes still use `wordcloud` for
+word sizing, color, and orientation, but seed new scene items around the canvas,
+run hidden physics warmup, and start rendering from the settled state.
+`settled-center` anchors items to the center point. `settled-line` anchors items
+along the canvas medial axis: horizontal on wide renders, vertical on tall
+renders, and collapsed to the center on square renders. Recurring `id` values
+inherit their previous final positions and stay locked during the hidden warmup
+so new scene items settle around them.
+
+`scene_positioning = "attractors"` lets you define named normalized anchor
+points in TOML and assign words or images to them with the CSV `attractor`
+column:
+
+```toml
+scene_positioning = "attractors"
+scene_settle_steps = 120
+
+[attractors.left]
+x = 0.28
+y = 0.52
+
+[attractors.right]
+x = 0.72
+y = 0.52
+```
+
+```csv
+scene,id,word,type,asset,attractor,s001,s002
+verse,python,python,text,,left,0,1
+verse,motion,motion,text,,right,0,1
+verse,logo,,image,logo.png,right,0,1
+```
+
+Blank row attractors use `[attractors.default]` when it exists, otherwise the
+canvas center. Named attractors must exist in the TOML config. To move an item
+between clusters, repeat the same `id` in a later scene with a different
+`attractor`; it will carry over from its previous final position and move toward
+the new cluster during the visible scene.
 
 Scene mode can also render static image assets as animated cloud items. Use
 `type = "image"` with explicit `id` and `asset` values:
@@ -356,7 +388,8 @@ PNG, JPEG, and WebP assets are supported for raster outputs; image asset paths
 are resolved relative to the CSV file. Image rows must have an explicit `id`, a
 supported `asset`, and a positive `asset_scale` when `asset_scale` is supplied.
 Image rows also need `x` and `y` unless that same `id` inherits a position from
-an earlier scene.
+an earlier scene. Settled scene-positioning modes, including `attractors`, can
+also spawn image rows without `x` and `y` and pull them to their anchors.
 
 `asset_scale` is responsive. It fits the source image inside a box whose width
 and height are that fraction of the render canvas, preserving the source aspect

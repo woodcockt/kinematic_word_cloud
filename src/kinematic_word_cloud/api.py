@@ -66,6 +66,7 @@ class RenderOptions:
     scene_starts: Mapping[str, str] | None = None
     scene_positioning: str = DEFAULT_SCENE_POSITIONING
     scene_settle_steps: int = DEFAULT_SCENE_SETTLE_STEPS
+    scene_attractors: Mapping[str, tuple[float, float]] | None = None
 
 
 @dataclass(frozen=True)
@@ -152,6 +153,7 @@ def render_animation(options: RenderOptions) -> RenderResult:
             size_max_value=options.size_max_value,
             scene_positioning=options.scene_positioning,
             scene_settle_steps=options.scene_settle_steps,
+            scene_attractors=options.scene_attractors,
         )
     else:
         table = load_keyframes(input_path)

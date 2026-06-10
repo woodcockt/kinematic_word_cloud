@@ -22,6 +22,7 @@ from .labels import LabelConfig
 from .layout import ColorOptions
 from .render_config import load_render_config
 from .scenes import (
+    ATTRACTORS_SCENE_POSITIONING,
     DEFAULT_LAYOUT_MODE,
     DEFAULT_SCENE_POSITIONING,
     DEFAULT_SCENE_SETTLE_STEPS,
@@ -39,6 +40,7 @@ from .scenes import (
 __all__ = [
     "AnimationTiming",
     "ASPECT_CHOICES",
+    "ATTRACTORS_SCENE_POSITIONING",
     "CanvasSize",
     "KeyframeDataError",
     "KeyframeTable",

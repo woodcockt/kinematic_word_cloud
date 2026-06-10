@@ -29,6 +29,7 @@ from .render_config import (
     resolve_interpolation,
     resolve_layout_mode,
     resolve_project_path,
+    resolve_scene_attractors,
     resolve_scene_positioning,
     resolve_scene_settle_steps,
     resolve_scene_starts,
@@ -47,6 +48,12 @@ Scene image assets:
   asset_scale for responsive sizing, layer=front|back for draw order, and x/y
   center coordinates unless the id inherits a previous scene position. Use
   --physics when image items should participate in spacing.
+
+Scene attractors:
+  In --layout-mode scene, use scene_positioning = "attractors" in TOML and
+  define [attractors.name] tables with normalized x/y points. Assign rows with
+  an optional attractor CSV column. Blank row attractors use [attractors.default]
+  when present, otherwise the canvas center.
 """
 
 
@@ -83,6 +90,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         layout_mode = resolve_layout_mode(args, config)
         scene_positioning = resolve_scene_positioning(args, config)
         scene_settle_steps = resolve_scene_settle_steps(args, config)
+        scene_attractors = resolve_scene_attractors(args, config)
         scene_starts = resolve_scene_starts(args, config)
         export_formats = resolve_export_formats(args, config)
         timing_values = resolve_timing_values(args, config)
@@ -147,6 +155,7 @@ def main(argv: Sequence[str] | None = None) -> None:
                 scene_starts=scene_starts,
                 scene_positioning=scene_positioning,
                 scene_settle_steps=scene_settle_steps,
+                scene_attractors=scene_attractors,
             )
         )
     except KeyframeDataError as exc:
@@ -160,6 +169,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         layout_mode=layout_mode,
         scene_positioning=scene_positioning,
         scene_settle_steps=scene_settle_steps,
+        scene_attractors=scene_attractors,
         interpolation=interpolation,
         size_max_value=size_max_value,
         color_options=color_options,
@@ -368,9 +378,9 @@ def build_parser() -> argparse.ArgumentParser:
         choices=SCENE_POSITIONING_MODES,
         default=argparse.SUPPRESS,
         help=(
-            "Scene positioning strategy. settled-center and settled-line seed "
-            "items around the canvas, pull them toward center anchors with "
-            "hidden physics warmup, then start rendering from the settled state."
+            "Scene positioning strategy. settled-center, settled-line, and "
+            "attractors seed items around the canvas, pull them toward anchors "
+            "with hidden physics warmup, then start rendering."
         ),
     )
     parser.add_argument(
@@ -499,6 +509,7 @@ def _print_summary(
     layout_mode: str,
     scene_positioning: str,
     scene_settle_steps: int,
+    scene_attractors: dict[str, tuple[float, float]],
     interpolation: str,
     size_max_value: float | None,
     color_options,
@@ -514,6 +525,8 @@ def _print_summary(
         print(f"Scene positioning: {scene_positioning}")
         if scene_positioning != "wordcloud":
             print(f"Scene settle steps: {scene_settle_steps}")
+        if scene_attractors:
+            print("Scene attractors: " + ", ".join(scene_attractors))
     if result.scene_render_info:
         print(
             "Scenes: "
