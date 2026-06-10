@@ -10,6 +10,8 @@ from kinematic_word_cloud.data import KeyframeDataError
 from kinematic_word_cloud.scenes import (
     SCENE_LAYOUT_MODE,
     SETTLED_CENTER_SCENE_POSITIONING,
+    SETTLED_LINE_SCENE_POSITIONING,
+    _line_anchor_points,
     from_scene_dataframe,
     render_scene_animation_frames,
 )
@@ -269,6 +271,49 @@ def test_scene_settled_center_locks_carryover_during_warmup(
     assert chorus_first["centers"]["python"] == pytest.approx(
         intro_final["centers"]["python"]
     )
+
+
+def test_settled_line_anchor_points_follow_medial_axis() -> None:
+    assert _line_anchor_points(3, width=1280, height=720) == pytest.approx(
+        [
+            (500.0, 360.0),
+            (640.0, 360.0),
+            (780.0, 360.0),
+        ]
+    )
+    assert _line_anchor_points(3, width=720, height=1280) == pytest.approx(
+        [
+            (360.0, 500.0),
+            (360.0, 640.0),
+            (360.0, 780.0),
+        ]
+    )
+    assert _line_anchor_points(2, width=720, height=720) == pytest.approx(
+        [
+            (360.0, 360.0),
+            (360.0, 360.0),
+        ]
+    )
+
+
+def test_scene_settled_line_renders_continuous_frames(tmp_path) -> None:
+    scene_data = from_scene_dataframe(scene_dataframe(), scene_starts=SCENE_STARTS)
+
+    frame_paths, scene_info = render_scene_animation_frames(
+        scene_data,
+        tmp_path,
+        frames_per_transition=1,
+        width=320,
+        height=180,
+        random_state=3,
+        scene_positioning=SETTLED_LINE_SCENE_POSITIONING,
+        scene_settle_steps=20,
+    )
+
+    assert [path.name for path in frame_paths] == [
+        f"frame_{index:04d}.png" for index in range(7)
+    ]
+    assert [info.frame_count for info in scene_info] == [3, 2, 2]
 
 
 def test_scene_render_composites_png_image_item(tmp_path) -> None:

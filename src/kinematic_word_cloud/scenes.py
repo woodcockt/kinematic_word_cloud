@@ -66,9 +66,11 @@ IMAGE_LAYERS: tuple[str, ...] = (FRONT_IMAGE_LAYER, BACK_IMAGE_LAYER)
 RASTER_IMAGE_SUFFIXES: tuple[str, ...] = (".png", ".jpg", ".jpeg", ".webp")
 WORDCLOUD_SCENE_POSITIONING = "wordcloud"
 SETTLED_CENTER_SCENE_POSITIONING = "settled-center"
+SETTLED_LINE_SCENE_POSITIONING = "settled-line"
 SCENE_POSITIONING_MODES: tuple[str, ...] = (
     WORDCLOUD_SCENE_POSITIONING,
     SETTLED_CENTER_SCENE_POSITIONING,
+    SETTLED_LINE_SCENE_POSITIONING,
 )
 DEFAULT_SCENE_POSITIONING = WORDCLOUD_SCENE_POSITIONING
 DEFAULT_SCENE_SETTLE_STEPS = 120
@@ -579,15 +581,13 @@ def render_scene_animation_frames(
         text_initial_centers: Mapping[str, tuple[float, float]] | None = None
         image_initial_centers: Mapping[str, tuple[float, float]] | None = None
         settle_locked_ids: set[str] = set()
-        if scene_positioning == SETTLED_CENTER_SCENE_POSITIONING:
-            text_anchor_centers = {
-                word: (width / 2.0, height / 2.0)
-                for word in scene.table.words
-            }
-            image_anchor_centers = {
-                image_item.item_id: (width / 2.0, height / 2.0)
-                for image_item in scene.image_items
-            }
+        if _uses_settled_scene_positioning(scene_positioning):
+            text_anchor_centers, image_anchor_centers = _settled_scene_anchor_centers(
+                scene,
+                scene_positioning=scene_positioning,
+                width=width,
+                height=height,
+            )
             text_initial_centers, image_initial_centers = (
                 _settled_center_initial_centers(
                     scene,
@@ -615,7 +615,7 @@ def render_scene_animation_frames(
                 canvas_size=(width, height),
                 config=physics_config,
             )
-            if use_physics or scene_positioning == SETTLED_CENTER_SCENE_POSITIONING
+            if use_physics or _uses_settled_scene_positioning(scene_positioning)
             else None
         )
         combined_peak_values = {
@@ -624,7 +624,7 @@ def render_scene_animation_frames(
         }
         if (
             simulator is not None
-            and scene_positioning == SETTLED_CENTER_SCENE_POSITIONING
+            and _uses_settled_scene_positioning(scene_positioning)
             and scene_settle_steps > 0
         ):
             for _ in range(scene_settle_steps):
@@ -664,7 +664,7 @@ def render_scene_animation_frames(
             }
             if (
                 simulator is not None
-                and scene_positioning == SETTLED_CENTER_SCENE_POSITIONING
+                and _uses_settled_scene_positioning(scene_positioning)
                 and frame_index == 0
             ):
                 centers = simulator.centers()
@@ -1153,6 +1153,93 @@ def _load_image_asset(
         except OSError as exc:
             raise KeyframeDataError(f"Could not load image asset: {path}") from exc
     return image_cache[path]
+
+
+def _uses_settled_scene_positioning(scene_positioning: str) -> bool:
+    return scene_positioning in {
+        SETTLED_CENTER_SCENE_POSITIONING,
+        SETTLED_LINE_SCENE_POSITIONING,
+    }
+
+
+def _settled_scene_anchor_centers(
+    scene: SceneSlice,
+    *,
+    scene_positioning: str,
+    width: int,
+    height: int,
+) -> tuple[
+    dict[str, tuple[float, float]],
+    dict[str, tuple[float, float]],
+]:
+    body_ids = [
+        *scene.table.words,
+        *(image_item.item_id for image_item in scene.image_items),
+    ]
+    if scene_positioning == SETTLED_CENTER_SCENE_POSITIONING:
+        anchor_points = [
+            (width / 2.0, height / 2.0)
+            for _ in body_ids
+        ]
+    elif scene_positioning == SETTLED_LINE_SCENE_POSITIONING:
+        anchor_points = _line_anchor_points(
+            len(body_ids),
+            width=width,
+            height=height,
+        )
+    else:
+        raise KeyframeDataError(
+            "scene_positioning must be one of: "
+            + ", ".join(SCENE_POSITIONING_MODES)
+        )
+
+    text_anchor_count = len(scene.table.words)
+    text_anchors = {
+        word: anchor
+        for word, anchor in zip(
+            scene.table.words,
+            anchor_points[:text_anchor_count],
+            strict=True,
+        )
+    }
+    image_anchors = {
+        image_item.item_id: anchor
+        for image_item, anchor in zip(
+            scene.image_items,
+            anchor_points[text_anchor_count:],
+            strict=True,
+        )
+    }
+    return text_anchors, image_anchors
+
+
+def _line_anchor_points(
+    count: int,
+    *,
+    width: int,
+    height: int,
+) -> list[tuple[float, float]]:
+    if count <= 0:
+        return []
+    if count == 1 or width == height:
+        return [(width / 2.0, height / 2.0) for _ in range(count)]
+
+    points: list[tuple[float, float]] = []
+    if width > height:
+        start_x = height / 2.0
+        end_x = width - height / 2.0
+        y = height / 2.0
+        for index in range(count):
+            position = (index + 1) / (count + 1)
+            points.append((start_x + (end_x - start_x) * position, y))
+    else:
+        x = width / 2.0
+        start_y = width / 2.0
+        end_y = height - width / 2.0
+        for index in range(count):
+            position = (index + 1) / (count + 1)
+            points.append((x, start_y + (end_y - start_y) * position))
+    return points
 
 
 def _settled_center_initial_centers(
